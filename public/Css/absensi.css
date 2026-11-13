@@ -1,0 +1,120 @@
+.sik-attendance-page {
+    --attendance-maroon: #760d12;
+    --attendance-ink: #252128;
+    color: var(--attendance-ink);
+}
+
+.attendance-kicker {
+    color: var(--attendance-maroon);
+    font-size: .72rem;
+    font-weight: 800;
+    letter-spacing: .14em;
+}
+
+.attendance-count {
+    padding: .55rem .85rem;
+    border-radius: 999px;
+    background: #edf6ef;
+    color: #247451;
+    font-size: .8rem;
+    font-weight: 750;
+}
+
+.attendance-filter {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(190px, 260px) auto auto;
+    gap: .7rem;
+    padding: .85rem;
+    border-radius: 14px;
+}
+
+.attendance-filter .form-control,
+.attendance-filter .form-select {
+    min-height: 43px;
+    border-color: #e8dddd;
+    border-radius: 9px;
+}
+
+.attendance-manual,
+.attendance-table-card {
+    overflow: hidden;
+    border-radius: 15px;
+}
+
+.attendance-manual > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.15rem;
+    color: var(--attendance-ink);
+    cursor: pointer;
+    font-weight: 750;
+    list-style: none;
+}
+
+.attendance-manual > summary::-webkit-details-marker,
+.attendance-edit-details > summary::-webkit-details-marker {
+    display: none;
+}
+
+.attendance-manual > summary::after {
+    flex: 0 0 auto;
+    content: "+";
+    color: var(--attendance-maroon);
+    font-size: 1.3rem;
+}
+
+.attendance-manual[open] > summary::after { content: "−"; }
+
+.attendance-summary-note {
+    margin-left: auto;
+    color: #827879;
+    font-size: .77rem;
+    font-weight: 500;
+}
+
+.attendance-manual .card-body { border-top: 1px solid #f0e8e8; }
+
+.attendance-table-card thead th {
+    padding: .85rem .8rem;
+    border-color: #d9dee6;
+    background: #202b3c;
+    color: #fff;
+    font-size: .78rem;
+    font-weight: 750;
+    white-space: nowrap;
+}
+
+.attendance-table-card tbody td {
+    padding: .8rem;
+    border-color: #eceff2;
+    font-size: .82rem;
+    vertical-align: top;
+}
+
+.attendance-edit-cell { min-width: 240px; }
+.attendance-edit-form > .d-flex .form-select { min-width: 130px; }
+
+.attendance-edit-details { margin-top: .4rem; }
+
+.attendance-edit-details > summary {
+    width: fit-content;
+    color: #760d12;
+    cursor: pointer;
+    font-size: .72rem;
+    font-weight: 700;
+    list-style: none;
+}
+
+@media (max-width: 760px) {
+    .sik-attendance-page { padding-inline: .8rem !important; }
+    .attendance-filter { grid-template-columns: 1fr 1fr; }
+    .attendance-filter .form-control { grid-column: 1 / -1; }
+    .attendance-manual > summary { align-items: flex-start; }
+    .attendance-summary-note { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .attendance-manual > summary::after { transition: none; }
+}

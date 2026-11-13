@@ -1,0 +1,12 @@
+@extends('layouts.app')
+@section('content')
+<div class="container py-4 py-lg-5">
+ <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4"><div><h1 class="page-title h3 mb-1">Manajemen Periode SIK</h1><p class="text-muted mb-0">Kelola periode pelaksanaan Sistem Informasi Layanan SIK.</p></div><a href="{{ route('periode-sik.create') }}" class="btn btn-primary">+ Tambah Periode</a></div>
+ @if(session('success'))<div class="alert alert-success alert-dismissible fade show">{{ session('success') }}<button class="btn-close" data-bs-dismiss="alert"></button></div>@endif
+ @if(session('error'))<div class="alert alert-danger alert-dismissible fade show">{{ session('error') }}<button class="btn-close" data-bs-dismiss="alert"></button></div>@endif
+ <div class="card shadow-sm"><div class="card-header bg-white py-3"><h2 class="h5 fw-bold mb-0">Daftar Periode</h2><p class="small text-muted mb-0">Seluruh periode SIK yang telah terdaftar.</p></div><div class="card-body p-0"><div class="table-responsive"><table class="table table-bordered table-hover align-middle mb-0"><thead><tr><th>No</th><th>Nama Periode</th><th>Tahun</th><th>Tanggal Mulai</th><th>Tanggal Selesai</th><th>Status</th><th>Aksi</th></tr></thead><tbody>
+ @forelse($periodes as $periode)<tr><td>{{ $periodes->firstItem()+$loop->index }}</td><td class="fw-semibold">{{ $periode->nama_periode }}</td><td>{{ $periode->tahun }}</td><td>{{ \Carbon\Carbon::parse($periode->tanggal_mulai)->format('d-m-Y') }}</td><td>{{ \Carbon\Carbon::parse($periode->tanggal_selesai)->format('d-m-Y') }}</td><td><span class="badge @switch($periode->status) @case('Aktif') bg-success @break @case('Persiapan') bg-warning text-dark @break @default bg-secondary @endswitch">{{ $periode->status }}</span></td><td><div class="d-flex gap-2"><a href="{{ route('periode-sik.edit',$periode) }}" class="btn btn-sm btn-warning">Edit</a><form action="{{ route('periode-sik.destroy',$periode) }}" method="POST" onsubmit="return confirm('Yakin ingin menghapus periode ini?')">@csrf @method('DELETE')<button class="btn btn-sm btn-danger">Hapus</button></form></div></td></tr>
+ @empty<tr><td colspan="7" class="text-center py-5"><div class="fw-semibold">Belum ada periode SIK</div><div class="text-muted">Silakan tambahkan periode baru.</div></td></tr>@endforelse
+ </tbody></table></div></div>@if($periodes->hasPages())<div class="card-footer bg-white">{{ $periodes->links() }}</div>@endif</div>
+</div>
+@endsection

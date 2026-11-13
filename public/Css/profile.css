@@ -1,0 +1,132 @@
+.sik-profile-page {
+    --profile-ink: #292325;
+    --profile-muted: #72696a;
+    --profile-line: #eadfe0;
+    --profile-maroon: #760d12;
+    --profile-maroon-dark: #5c080d;
+    padding-top: clamp(1.5rem, 3vw, 2.5rem) !important;
+    padding-bottom: 3rem !important;
+    color: var(--profile-ink);
+}
+
+.sik-profile-heading {
+    margin: 0;
+    color: var(--profile-ink);
+    font-size: clamp(1.3rem, 2vw, 1.65rem);
+    font-weight: 750;
+}
+
+.sik-profile-subheading {
+    margin: .35rem 0 0;
+    color: var(--profile-muted);
+    font-size: .95rem;
+}
+
+.sik-profile-content {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem;
+    max-width: 1240px;
+}
+
+.sik-profile-card {
+    min-width: 0;
+    padding: clamp(1.15rem, 2.2vw, 2rem) !important;
+    border: 1px solid var(--profile-line);
+    border-radius: 18px !important;
+    background: #fff !important;
+    box-shadow: 0 8px 24px rgba(42, 24, 24, .06) !important;
+}
+
+.sik-profile-card--danger {
+    grid-column: 1 / -1;
+    border-color: #eed9d9;
+    background: #fffafa !important;
+}
+
+.sik-profile-form {
+    width: 100%;
+    max-width: none !important;
+}
+
+.sik-profile-card h2 {
+    color: var(--profile-ink) !important;
+    font-size: 1.1rem;
+    font-weight: 750;
+}
+
+.sik-profile-card p {
+    color: var(--profile-muted) !important;
+    line-height: 1.6;
+}
+
+.sik-profile-card label {
+    color: #4b4244 !important;
+    font-weight: 650;
+}
+
+.sik-profile-page input:not([type="checkbox"]):not([type="hidden"]) {
+    width: 100%;
+    min-height: 46px;
+    border: 1px solid #d8cdce !important;
+    border-radius: 9px;
+    background: #fff !important;
+    color: var(--profile-ink) !important;
+    box-shadow: none;
+}
+
+.sik-profile-page input:not([type="checkbox"]):not([type="hidden"]):focus {
+    border-color: #a83939 !important;
+    outline: 0;
+    box-shadow: 0 0 0 3px rgba(118, 13, 18, .12);
+}
+
+.sik-profile-card button[type="submit"] {
+    min-height: 44px;
+    padding: .65rem 1.1rem;
+    border: 1px solid var(--profile-maroon);
+    border-radius: 9px;
+    background: var(--profile-maroon);
+    color: #fff;
+    font-weight: 700;
+}
+
+.sik-profile-card button[type="submit"]:hover {
+    border-color: var(--profile-maroon-dark);
+    background: var(--profile-maroon-dark);
+}
+
+.sik-profile-card--danger button {
+    border-radius: 9px;
+}
+
+.sik-profile-page .dark\:bg-gray-800,
+.sik-profile-page .dark\:bg-gray-900 {
+    background: #fff !important;
+}
+
+.sik-profile-page .dark\:border-gray-700 {
+    border-color: var(--profile-line) !important;
+}
+
+.sik-profile-page .dark\:text-gray-100,
+.sik-profile-page .dark\:text-gray-200,
+.sik-profile-page .dark\:text-gray-300,
+.sik-profile-page .dark\:text-gray-400 {
+    color: var(--profile-muted) !important;
+}
+
+.sik-profile-page .dark\:text-gray-100,
+.sik-profile-page .dark\:text-gray-200 {
+    color: var(--profile-ink) !important;
+}
+
+@media (max-width: 800px) {
+    .sik-profile-content {
+        grid-template-columns: 1fr;
+    }
+
+    .sik-profile-card--danger {
+        grid-column: auto;
+    }
+}
