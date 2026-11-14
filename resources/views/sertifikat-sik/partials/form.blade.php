@@ -1,15 +1,20 @@
 <div class="row g-3">
     <div class="col-12">
         <label class="form-label" for="kelulusan_sik_id">Kelulusan Peserta</label>
-        <select class="form-select @error('kelulusan_sik_id') is-invalid @enderror" name="kelulusan_sik_id" id="kelulusan_sik_id" required>
-            <option value="">Pilih peserta yang sudah lulus</option>
-            @foreach ($kelulusan as $result)
-                <option value="{{ $result->id }}" @selected((string) old('kelulusan_sik_id', $item?->kelulusan_sik_id) === (string) $result->id)>
-                    {{ $result->anggotaPeriodeSik?->santri?->nomor_induk }} — {{ $result->anggotaPeriodeSik?->santri?->nama }} / {{ $result->anggotaPeriodeSik?->periode?->nama_periode }}
-                </option>
-            @endforeach
-        </select>
-        @error('kelulusan_sik_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
+<select class="form-select @error('kelulusan_sik_id') is-invalid @enderror"
+        name="kelulusan_sik_id"
+        id="kelulusan_sik_id"
+        required>
+
+    @foreach ($kelulusan as $result)
+        <option value="{{ $result->id }}"
+            @selected((string) old('kelulusan_sik_id', $item?->kelulusan_sik_id) === (string) $result->id)>
+            {{ $result->anggotaPeriodeSik?->santri?->nomor_induk }}
+            — {{ $result->anggotaPeriodeSik?->santri?->nama }}
+            / {{ $result->anggotaPeriodeSik?->periode?->nama_periode }}
+        </option>
+    @endforeach
+</select>        @error('kelulusan_sik_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
     </div>
 
     <div class="col-md-6">

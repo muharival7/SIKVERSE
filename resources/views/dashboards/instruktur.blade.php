@@ -16,17 +16,7 @@
             <h1 id="instructor-welcome-title">Selamat datang, {{ $user->name }}</h1>
             <p>Pantau kelompok, progres peserta, dan tren kehadiran dalam program yang kamu ampu.</p>
         </div>
-        <div class="sd-profile-summary" aria-label="Informasi batas kehadiran">
-            <span class="sd-profile-chip">
-                <span class="sd-chip-label">Batas kelulusan</span>
-                <strong>{{ config('sik.attendance.minimum_present', 14) }} dari {{ config('sik.attendance.meeting_count', 16) }} kali hadir</strong>
-            </span>
-            <span class="sd-profile-chip">
-                <span class="sd-chip-label">Peran</span>
-                <strong>Instruktur SIK</strong>
-            </span>
-        </div>
-    </section>
+     </section>
 
     <section class="row g-3 mt-2" aria-label="Ringkasan instruktur">
         <div class="col-12 col-sm-4">

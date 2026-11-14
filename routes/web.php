@@ -168,6 +168,12 @@ Route::middleware($authenticatedMiddleware)->group(function (): void {
         Route::resource('kelulusan-sik', KelulusanSikController::class)
             ->except(['show']);
 
+        // Preview Sertifikat
+        Route::get('/sertifikat-sik/{sertifikatSik}/preview', [
+            SertifikatSikController::class,
+            'preview',
+        ])->name('sertifikat-sik.preview');
+
         // Manajemen Sertifikat
         Route::resource('sertifikat-sik', SertifikatSikController::class)
             ->except(['show']);
