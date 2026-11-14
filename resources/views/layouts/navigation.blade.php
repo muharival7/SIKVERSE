@@ -12,14 +12,10 @@
     if ($role === \App\Enums\UserRole::Admin) {
         $mainNavItems = [
             ['label' => 'Dashboard', 'route' => 'dashboard', 'matches' => ['dashboard*'], 'icon' => 'dashboard'],
-            ['label' => 'Mahasiswa', 'route' => 'santris.index', 'matches' => ['santris.*'], 'icon' => 'students'],
-            ['label' => 'Dosen', 'route' => 'users.index', 'matches' => ['users.*'], 'icon' => 'users'],
-            ['label' => 'Rekap Absen', 'route' => 'rekap-kehadiran-sik.index', 'matches' => ['rekap-kehadiran-sik.*'], 'icon' => 'report'],
+            ['label' => 'Data Santri', 'route' => 'santris.index', 'matches' => ['santris.*'], 'icon' => 'students'],
+            ['label' => 'Data Dosen', 'route' => 'users.index', 'matches' => ['users.*'], 'icon' => 'users'],
+            ['label' => 'Rekap Absensi', 'route' => 'rekap-kehadiran-sik.index', 'matches' => ['rekap-kehadiran-sik.*'], 'icon' => 'report'],
         ];
-
-        // Admin sidebar follows the compact Figma reference.
-        // Related administration pages remain available through contextual links within their pages.
-        $secondaryNavItems = [];
     } elseif ($role === \App\Enums\UserRole::InfrastrukturSik) {
         $mainNavItems = [
             ['label' => 'Dashboard', 'route' => 'dashboard', 'matches' => ['dashboard*'], 'icon' => 'dashboard'],

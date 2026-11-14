@@ -1,127 +1,29 @@
+@extends('layouts.app')
 
-<x-app-layout>
-    <x-slot name="header">
-        <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
-            Tambah Data Santri
-        </h2>
-    </x-slot>
+@section('content')
+<div class="container py-4">
+    <div class="mb-4">
+        <span class="text-uppercase fw-bold small" style="color:#760d12;letter-spacing:.14em">Data santri</span>
+        <h1 class="h2 fw-bold mt-1 mb-1">Tambah Santri</h1>
+        <p class="text-muted mb-0">Lengkapi identitas santri dan siapkan akun masuk SIKVERSE.</p>
+    </div>
 
-    <div class="py-8">
-        <div class="max-w-4xl mx-auto sm:px-6 lg:px-8">
+    @if ($errors->any())
+        <div class="alert alert-danger"><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
+    @endif
 
-            <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6">
-
-                <h3 class="text-lg font-bold text-gray-800 dark:text-white mb-6">
-                    Formulir Identitas Santri
-                </h3>
-
-                @if ($errors->any())
-                    <div class="mb-4 p-4 bg-red-100 text-red-700 rounded-lg">
-                        <ul class="list-disc list-inside">
-                            @foreach ($errors->all() as $error)
-                                <li>{{ $error }}</li>
-                            @endforeach
-                        </ul>
-                    </div>
-                @endif
-
-                <form action="{{ route('santris.store') }}" method="POST">
-                    @csrf
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-
-                        <div>
-                            <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-200">
-                                Nomor Induk *
-                            </label>
-                            <input type="text" name="nomor_induk"
-                                value="{{ old('nomor_induk') }}"
-                                required
-                                class="w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:text-white">
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-200">
-                                Nama Lengkap *
-                            </label>
-                            <input type="text" name="nama"
-                                value="{{ old('nama') }}"
-                                required
-                                class="w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:text-white">
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-200">
-                                Email Akun {{ config('sik.auth.require_email_verification') ? '*' : '(opsional)' }}
-                            </label>
-                            <input type="email" name="email" value="{{ old('email') }}"
-                                @required(config('sik.auth.require_email_verification'))
-                                autocomplete="email"
-                                class="w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:text-white">
-                            <small class="text-gray-500">Dipakai untuk verifikasi OTP dan pemulihan akun.</small>
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-200">Program Studi</label>
-                            <input type="text" name="program_studi" value="{{ old('program_studi') }}" class="w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:text-white">
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-200">
-                                Jenis Kelamin
-                            </label>
-                            <select name="jenis_kelamin"
-                                class="w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:text-white">
-                                <option value="">Pilih Jenis Kelamin</option>
-                                <option value="Laki-laki" @selected(old('jenis_kelamin') == 'Laki-laki')>
-                                    Laki-laki
-                                </option>
-                                <option value="Perempuan" @selected(old('jenis_kelamin') == 'Perempuan')>
-                                    Perempuan
-                                </option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-200">
-                                Fingerprint ID
-                            </label>
-                            <input type="text" name="fingerprint_id"
-                                value="{{ old('fingerprint_id') }}"
-                                class="w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:text-white">
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-200">
-                                Status *
-                            </label>
-                            <select name="status" required
-                                class="w-full rounded-lg border-gray-300 dark:bg-gray-700 dark:text-white">
-                                <option value="Aktif" @selected(old('status', 'Aktif') == 'Aktif')>
-                                    Aktif
-                                </option>
-                                <option value="Tidak Aktif" @selected(old('status') == 'Tidak Aktif')>
-                                    Tidak Aktif
-                                </option>
-                            </select>
-                        </div>
-
-                    </div>
-
-                    <div class="flex justify-end gap-3 mt-8">
-                        <a href="{{ route('santris.index') }}"
-                            class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
-                            Batal
-                        </a>
-
-                        <button type="submit"
-                            class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
-                            Simpan Data
-                        </button>
-                    </div>
-
-                </form>
-            </div>
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white py-3"><h2 class="h5 fw-bold mb-0">Formulir Identitas Santri</h2></div>
+        <div class="card-body p-4">
+            <form action="{{ route('santris.store') }}" method="POST">
+                @csrf
+                @include('santris.partials.form-fields', ['santri' => null])
+                <div class="d-flex flex-wrap justify-content-end gap-2 mt-4">
+                    <a href="{{ route('santris.index') }}" class="btn btn-outline-secondary">Batal</a>
+                    <button type="submit" class="btn btn-danger">Simpan Data</button>
+                </div>
+            </form>
         </div>
     </div>
-</x-app-layout>
+</div>
+@endsection

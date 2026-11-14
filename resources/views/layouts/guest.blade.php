@@ -27,5 +27,6 @@
                 </div>
             </section>
         </main>
+        <script src="{{ asset('js/auth-password-toggle.js') }}?v={{ filemtime(public_path('js/auth-password-toggle.js')) }}" defer></script>
     </body>
 </html>

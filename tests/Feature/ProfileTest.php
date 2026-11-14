@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\UserRole;
 use App\Models\User;
 
 test('profile page is displayed', function () {
@@ -82,4 +83,34 @@ test('correct password must be provided to delete account', function () {
         ->assertRedirect('/profile');
 
     $this->assertNotNull($user->fresh());
+});
+
+test('the last admin cannot delete their own account', function () {
+    $admin = User::factory()->create(['role' => UserRole::Admin]);
+
+    $this->actingAs($admin)
+        ->from('/profile')
+        ->delete('/profile', [
+            'password' => 'password',
+        ])
+        ->assertRedirect('/profile')
+        ->assertSessionHasErrorsIn('userDeletion', 'password');
+
+    $this->assertAuthenticatedAs($admin);
+    $this->assertNotNull($admin->fresh());
+});
+
+test('an admin can delete their account when another admin remains', function () {
+    $admin = User::factory()->create(['role' => UserRole::Admin]);
+    User::factory()->create(['role' => UserRole::Admin]);
+
+    $this->actingAs($admin)
+        ->delete('/profile', [
+            'password' => 'password',
+        ])
+        ->assertRedirect('/');
+
+    $this->assertGuest();
+    $this->assertNull($admin->fresh());
+    $this->assertDatabaseCount('users', 1);
 });

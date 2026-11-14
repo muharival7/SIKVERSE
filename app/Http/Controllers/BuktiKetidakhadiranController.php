@@ -6,7 +6,6 @@ use App\Enums\UserRole;
 use App\Models\AbsensiSik;
 use App\Models\BuktiKetidakhadiran;
 use App\Models\InfrastrukturSik;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,32 +13,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BuktiKetidakhadiranController extends Controller
 {
-    public function index(Request $request): View
-    {
-        $isAdmin = $request->user()->role === UserRole::Admin;
-        $instruktur = $isAdmin ? null : $this->currentInstructor($request);
-
-        $buktiQuery = BuktiKetidakhadiran::with([
-            'absensi.anggotaPeriode.santri',
-            'absensi.pertemuan.kegiatan',
-            'pemeriksa',
-        ])->latest();
-
-        if ($instruktur instanceof InfrastrukturSik) {
-            $this->scopeToInstructor($buktiQuery, $instruktur);
-        }
-
-        return view('bukti-ketidakhadiran.index', [
-            'bukti' => $buktiQuery->paginate(10),
-            'isAdmin' => $isAdmin,
-        ]);
-    }
-
     public function store(Request $request, AbsensiSik $absensiSik): RedirectResponse
     {
         $santri = $request->user()->santri;
@@ -103,37 +80,7 @@ class BuktiKetidakhadiranController extends Controller
             Storage::disk('local')->delete($oldFilePath);
         }
 
-        return back()->with('success', 'Bukti ketidakhadiran berhasil dikirim untuk diperiksa.');
-    }
-
-    public function update(Request $request, BuktiKetidakhadiran $buktiKetidakhadiran): RedirectResponse
-    {
-        $isAdmin = $request->user()->role === UserRole::Admin;
-        $instruktur = $isAdmin ? null : $this->currentInstructor($request);
-
-        $buktiKetidakhadiran->load('absensi.anggotaPeriode.kelompok', 'absensi.pertemuan.kelompokHost');
-        $this->authorizeReview($buktiKetidakhadiran, $isAdmin, $instruktur);
-
-        if ($buktiKetidakhadiran->status_verifikasi !== 'Menunggu') {
-            return back()->withErrors([
-                'status_verifikasi' => 'Bukti ini sudah diperiksa.',
-            ]);
-        }
-
-        $validated = $request->validate([
-            'status_verifikasi' => ['required', Rule::in(['Diterima', 'Ditolak'])],
-            'catatan_pemeriksaan' => $request->input('status_verifikasi') === 'Ditolak'
-                ? ['required', 'string', 'max:1000']
-                : ['nullable', 'string', 'max:1000'],
-        ]);
-
-        $buktiKetidakhadiran->update([
-            ...$validated,
-            'diperiksa_oleh' => $instruktur?->id,
-            'tanggal_pemeriksaan' => now(),
-        ]);
-
-        return back()->with('success', 'Status bukti ketidakhadiran berhasil diperbarui.');
+        return back()->with('success', 'Bukti ketidakhadiran berhasil dikirim dan disimpan pada absensi Anda.');
     }
 
     public function download(Request $request, BuktiKetidakhadiran $buktiKetidakhadiran): StreamedResponse
@@ -165,26 +112,6 @@ class BuktiKetidakhadiranController extends Controller
         abort_unless($instruktur instanceof InfrastrukturSik, 403);
 
         return $instruktur;
-    }
-
-    private function scopeToInstructor(Builder $query, InfrastrukturSik $instruktur): void
-    {
-        $query->whereHas('absensi', function (Builder $absensiQuery) use ($instruktur): void {
-            $absensiQuery->whereHas(
-                'anggotaPeriode.kelompok',
-                fn (Builder $groupQuery) => $groupQuery->where('instruktur_id', $instruktur->id)
-            )->orWhereHas('pertemuan', function (Builder $meetingQuery) use ($instruktur): void {
-                $meetingQuery->where('instruktur_pengganti_id', $instruktur->id)
-                    ->orWhereHas(
-                        'kelompokHost',
-                        fn (Builder $groupQuery) => $groupQuery->where('instruktur_id', $instruktur->id)
-                    )
-                    ->orWhereHas(
-                        'kegiatan.kelompok',
-                        fn (Builder $groupQuery) => $groupQuery->where('instruktur_id', $instruktur->id)
-                    );
-            });
-        });
     }
 
     private function authorizeReview(

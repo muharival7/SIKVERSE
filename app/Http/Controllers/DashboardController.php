@@ -221,11 +221,12 @@ class DashboardController extends Controller
         return [
             'dashboardPeriod' => $activePeriod,
             'adminStats' => [
-                'totalSantri' => Santri::query()->where('status', 'Aktif')->count(),
-                'totalDosen' => InfrastrukturSik::query()->where('status', 'Aktif')->count(),
+                'totalSantri' => Santri::query()->count(),
+                'totalDosen' => InfrastrukturSik::query()->count(),
                 'pesertaAktif' => $participantsQuery->distinct('santri_id')->count('santri_id'),
                 'mahasiswaLulus' => KelulusanSik::query()
                     ->where('status', 'Lulus')
+                    ->meetsAttendanceThreshold()
                     ->whereHas('anggotaPeriode', function ($query) use ($activePeriod): void {
                         if ($activePeriod instanceof PeriodeSik) {
                             $query->where('periode_sik_id', $activePeriod->id);
@@ -237,6 +238,11 @@ class DashboardController extends Controller
                 'memenuhiTarget' => $recaps->where('status_kehadiran', 'Memenuhi')->count(),
             ],
             'adminRecentAttendance' => $orderedAttendance->reverse()->take(6)->values(),
+            'adminRecentSantris' => Santri::query()
+                ->with('anggotaPeriodeTerbaru.periode')
+                ->latest()
+                ->take(5)
+                ->get(),
             'adminAttendanceTrend' => $this->attendanceTrend($orderedAttendance),
             'adminAttendanceDistribution' => [
                 'hadir' => $presentAttendance,
@@ -337,6 +343,9 @@ class DashboardController extends Controller
      */
     private function kaLabDashboardData(): array
     {
+        $meetingCount = max(1, (int) config('sik.attendance.meeting_count', 16));
+        $minimumPresent = max(1, (int) config('sik.attendance.minimum_present', 14));
+
         $annualGraduation = KelulusanSik::query()
             ->join('anggota_periode_sik as anggota', 'anggota.id', '=', 'kelulusan_sik.anggota_periode_sik_id')
             ->join('periode_sik as periode', 'periode.id', '=', 'anggota.periode_sik_id')
@@ -355,6 +364,40 @@ class DashboardController extends Controller
             ])
             ->values();
 
+        $graduationFailures = KelulusanSik::query()
+            ->with([
+                'anggotaPeriodeSik.santri',
+                'anggotaPeriodeSik.periode',
+                'anggotaPeriodeSik.absensi',
+            ])
+            ->where('status', 'Tidak Lulus')
+            ->latest('updated_at')
+            ->take(10)
+            ->get()
+            ->map(function (KelulusanSik $record) use ($meetingCount, $minimumPresent): KelulusanSik {
+                $attendances = $record->anggotaPeriodeSik?->absensi ?? collect();
+                $present = min($attendances->where('status', 'Hadir')->count(), $meetingCount);
+                $percentage = round(($present / $meetingCount) * 100, 1);
+                $reasons = [];
+
+                if ($present < $minimumPresent) {
+                    $reasons[] = "Kehadiran {$present}/{$meetingCount} ({$percentage}%), kurang ".($minimumPresent - $present)." kali dari batas minimal {$minimumPresent}.";
+                }
+
+                if (filled($record->keterangan)) {
+                    $reasons[] = 'Catatan evaluasi: '.$record->keterangan;
+                } elseif ($present >= $minimumPresent) {
+                    $reasons[] = 'Ambang kehadiran terpenuhi; alasan lain belum dicatat pada evaluasi.';
+                }
+
+                $record->setAttribute('jumlah_hadir_aktual', $present);
+                $record->setAttribute('jumlah_tidak_hadir_aktual', max(0, $meetingCount - $present));
+                $record->setAttribute('persentase_kehadiran_aktual', $percentage);
+                $record->setAttribute('alasan_ketidaklulusan', implode(' ', $reasons));
+
+                return $record;
+            });
+
         $currentYear = (int) now()->year;
         $currentYearSummary = $annualGraduation->firstWhere('tahun', $currentYear) ?? [
             'tahun' => $currentYear,
@@ -367,6 +410,9 @@ class DashboardController extends Controller
             'graduationCurrentYear' => $currentYear,
             'graduationCurrentSummary' => $currentYearSummary,
             'graduationChartData' => $annualGraduation->slice(-5)->values(),
+            'graduationFailures' => $graduationFailures,
+            'graduationMeetingCount' => $meetingCount,
+            'graduationMinimumPresent' => $minimumPresent,
         ];
     }
 

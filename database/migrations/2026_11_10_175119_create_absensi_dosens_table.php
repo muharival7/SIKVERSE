@@ -22,6 +22,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->unique(['infrastruktur_sik_id', 'tanggal'], 'absensi_dosen_tanggal_unique');
+            $table->index('tanggal', 'absensi_dosen_tanggal_index');
         });
     }
 

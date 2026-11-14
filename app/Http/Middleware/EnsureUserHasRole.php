@@ -24,12 +24,17 @@ class EnsureUserHasRole
         );
 
         $profileStatus = match ($userRole) {
+            UserRole::Santri => $user?->santri?->status,
             UserRole::InfrastrukturSik => $user?->infrastrukturSik?->status,
             UserRole::KaLabMutu => $user?->kaLabMutu?->status,
             default => null,
         };
 
-        abort_if($profileStatus === 'Tidak Aktif', Response::HTTP_FORBIDDEN);
+        $hasInactiveOrMissingProfile = $userRole === UserRole::Santri
+            ? $profileStatus !== 'Aktif'
+            : $profileStatus === 'Tidak Aktif';
+
+        abort_if($hasInactiveOrMissingProfile, Response::HTTP_FORBIDDEN);
 
         return $next($request);
     }

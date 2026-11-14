@@ -1,11 +1,30 @@
 <?php
 
 use App\Enums\UserRole;
+use App\Models\Santri;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 
-test('dashboard entry redirects each user to the dashboard for their role', function (UserRole $role) {
+function makeRoleDashboardUser(UserRole $role): User
+{
     $user = User::factory()->create(['role' => $role]);
+
+    if ($role === UserRole::Santri) {
+        Santri::query()->create([
+            'user_id' => $user->id,
+            'nomor_induk' => 'TEST-'.fake()->unique()->numerify('########'),
+            'nama' => $user->name,
+            'jenis_kelamin' => 'Laki-laki',
+            'program_studi' => 'Sistem Informasi',
+            'status' => 'Aktif',
+        ]);
+    }
+
+    return $user;
+}
+
+test('dashboard entry redirects each user to the dashboard for their role', function (UserRole $role) {
+    $user = makeRoleDashboardUser($role);
 
     $this->actingAs($user)
         ->get(route('dashboard'))
@@ -18,7 +37,7 @@ test('dashboard entry redirects each user to the dashboard for their role', func
 ]);
 
 test('each user can open the dashboard assigned to their role', function (UserRole $role) {
-    $user = User::factory()->create(['role' => $role]);
+    $user = makeRoleDashboardUser($role);
 
     $this->actingAs($user)
         ->get(route($role->dashboardRoute()))
@@ -44,9 +63,14 @@ test('users without the admin role cannot open the admin dashboard', function (U
 ]);
 
 test('public registration always creates a santri account', function () {
+    config()->set('sik.auth.require_email_verification', false);
+
     $this->post('/register', [
         'name' => 'Santri Baru',
         'email' => 'santri@example.test',
+        'nomor_induk' => 'TEST-PUBLIC-001',
+        'program_studi' => 'Sistem Informasi',
+        'jenis_kelamin' => 'Laki-laki',
         'password' => 'password',
         'password_confirmation' => 'password',
         'role' => UserRole::Admin->value,
@@ -60,7 +84,7 @@ test('public registration always creates a santri account', function () {
 
 test('users cannot open dashboards assigned to other roles', function () {
     foreach (UserRole::cases() as $userRole) {
-        $user = User::factory()->create(['role' => $userRole]);
+        $user = makeRoleDashboardUser($userRole);
 
         foreach (UserRole::cases() as $dashboardRole) {
             if ($dashboardRole === $userRole) {
@@ -76,7 +100,7 @@ test('users cannot open dashboards assigned to other roles', function () {
 
 test('login redirects every role to its own dashboard', function () {
     foreach (UserRole::cases() as $role) {
-        $user = User::factory()->create(['role' => $role]);
+        $user = makeRoleDashboardUser($role);
 
         $this->post('/login', [
             'login' => $user->email,

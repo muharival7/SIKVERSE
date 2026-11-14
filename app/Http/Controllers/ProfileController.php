@@ -2,14 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\UserRole;
 use App\Http\Requests\ProfileUpdateRequest;
 use App\Models\AbsensiSik;
 use App\Models\BuktiKetidakhadiran;
 use App\Models\InfrastrukturSik;
 use App\Models\RiwayatAbsensi;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\View\View;
 
@@ -77,9 +80,32 @@ class ProfileController extends Controller
             }
         }
 
-        Auth::logout();
+        if ($user->role === UserRole::Admin) {
+            $deleted = DB::transaction(function () use ($user): bool {
+                $adminIds = User::query()
+                    ->where('role', UserRole::Admin->value)
+                    ->lockForUpdate()
+                    ->pluck('id');
 
-        $user->delete();
+                if ($adminIds->count() <= 1) {
+                    return false;
+                }
+
+                Auth::logout();
+
+                return (bool) $user->delete();
+            });
+
+            if (! $deleted) {
+                return back()->withErrors([
+                    'password' => 'Akun Admin terakhir tidak dapat dihapus. Buat Admin pengganti terlebih dahulu.',
+                ], 'userDeletion');
+            }
+        } else {
+            Auth::logout();
+
+            $user->delete();
+        }
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();

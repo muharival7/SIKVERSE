@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -36,6 +37,7 @@ class RegisteredUserController extends Controller
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
             'nomor_induk' => ['required', 'string', 'max:255', 'unique:santris,nomor_induk'],
             'program_studi' => ['required', 'string', 'max:255'],
+            'jenis_kelamin' => ['required', Rule::in(['Laki-laki', 'Perempuan'])],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
@@ -49,7 +51,7 @@ class RegisteredUserController extends Controller
             $user->santri()->create([
                 'nomor_induk' => $request->string('nomor_induk')->trim()->toString(),
                 'nama' => $user->name,
-                'jenis_kelamin' => null,
+                'jenis_kelamin' => $request->input('jenis_kelamin'),
                 'program_studi' => $request->string('program_studi')->trim()->toString(),
                 'status' => 'Aktif',
             ]);

@@ -213,7 +213,7 @@
         </div>
     </div>
 
-    <section class="sd-card sd-trend-card mt-4" aria-labelledby="sd-trend-title">
+    <section class="sd-card sd-trend-card sd-trend-card--compact mt-4" aria-labelledby="sd-trend-title">
         <div class="sd-card-heading">
             <div>
                 <span class="sd-section-kicker">ANALISIS KEHADIRAN</span>
@@ -223,7 +223,7 @@
             <span class="sd-trend-badge"><i aria-hidden="true"></i> Bulanan</span>
         </div>
 
-        <div class="sd-chart" data-attendance-chart data-trend-id="attendance-trend-data" role="img" aria-label="Grafik tren persentase kehadiran bulanan">
+        <div class="sd-chart" data-attendance-chart data-chart-size="compact" data-trend-id="attendance-trend-data" role="img" aria-label="Grafik tren persentase kehadiran bulanan">
             <div class="sd-chart-empty" data-chart-empty @if ($attendanceTrend->isNotEmpty()) hidden @endif>
                 Grafik akan terbentuk setelah absensi tercatat.
             </div>

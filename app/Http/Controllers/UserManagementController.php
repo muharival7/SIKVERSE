@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\UserRole;
+use App\Models\AbsensiDosen;
 use App\Models\AbsensiSik;
 use App\Models\BuktiKetidakhadiran;
 use App\Models\InfrastrukturSik;
@@ -12,6 +13,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
@@ -19,13 +21,36 @@ use Illuminate\View\View;
 
 class UserManagementController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
-        $users = User::query()
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:100'],
+            'status' => ['nullable', Rule::in(['Aktif', 'Tidak Aktif'])],
+        ]);
+
+        $userQuery = User::query()
             ->with(['infrastrukturSik.kelompok.anggota.rekapKehadiran'])
-            ->where('role', UserRole::InfrastrukturSik->value)
-            ->latest()
-            ->paginate(10)
+            ->where('role', UserRole::InfrastrukturSik->value);
+
+        if (filled($filters['search'] ?? null)) {
+            $search = trim($filters['search']);
+            $userQuery->where(function ($query) use ($search): void {
+                $query->where('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhereHas('infrastrukturSik', function ($profileQuery) use ($search): void {
+                        $profileQuery->where('nip', 'like', "%{$search}%")
+                            ->orWhere('program_studi', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        if (filled($filters['status'] ?? null)) {
+            $userQuery->whereHas('infrastrukturSik', fn ($query) => $query->where('status', $filters['status']));
+        }
+
+        $users = $userQuery->latest()
+            ->paginate(15)
+            ->withQueryString()
             ->through(function (User $user): User {
                 $recaps = $user->infrastrukturSik?->kelompok
                     ->flatMap(fn ($group) => $group->anggota->flatMap->rekapKehadiran)
@@ -45,12 +70,35 @@ class UserManagementController extends Controller
                 return $user;
             });
 
-        $totalDosen = User::query()->where('role', UserRole::InfrastrukturSik->value)->count();
-        $dosenAktif = User::query()->where('role', UserRole::InfrastrukturSik->value)
-            ->whereHas('infrastrukturSik', fn ($query) => $query->where('status', 'Aktif'))
-            ->count();
+        $totalDosen = InfrastrukturSik::query()->count();
+        $dosenAktif = InfrastrukturSik::query()->where('status', 'Aktif')->count();
 
-        return view('users.index', compact('users', 'totalDosen', 'dosenAktif'));
+        $absensiDosenAvailable = Schema::hasTable('absensi_dosen');
+        $profileIds = $users->getCollection()
+            ->map(fn (User $user): ?int => $user->infrastrukturSik?->id)
+            ->filter()
+            ->values();
+        $attendanceSummaries = $absensiDosenAvailable && $profileIds->isNotEmpty()
+            ? AbsensiDosen::query()
+                ->whereIn('infrastruktur_sik_id', $profileIds)
+                ->selectRaw('infrastruktur_sik_id, COUNT(*) as total_pertemuan')
+                ->selectRaw("SUM(CASE WHEN status = 'Hadir' THEN 1 ELSE 0 END) as total_hadir")
+                ->groupBy('infrastruktur_sik_id')
+                ->get()
+                ->keyBy('infrastruktur_sik_id')
+            : collect();
+
+        $users->getCollection()->each(function (User $user) use ($attendanceSummaries): void {
+            $summary = $attendanceSummaries->get($user->infrastrukturSik?->id);
+            $meetings = (int) ($summary?->total_pertemuan ?? 0);
+            $present = (int) ($summary?->total_hadir ?? 0);
+
+            $user->setAttribute('dosen_attendance_count', $meetings);
+            $user->setAttribute('dosen_attendance_present', $present);
+            $user->setAttribute('dosen_attendance_percentage', $meetings > 0 ? round(($present / $meetings) * 100, 1) : null);
+        });
+
+        return view('users.index', compact('users', 'totalDosen', 'dosenAktif', 'filters', 'absensiDosenAvailable'));
     }
 
     public function create(): View

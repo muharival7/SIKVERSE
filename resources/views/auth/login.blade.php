@@ -17,19 +17,21 @@
 
             <div class="sik-login-field">
                 <label class="sik-login-label" for="login">Username</label>
-                <input
-                    id="login"
-                    class="sik-login-control"
-                    type="text"
-                    name="login"
-                    value="{{ old('login') }}"
-                    required
-                    autofocus
-                    autocomplete="username"
-                    placeholder="Masukkan username"
-                    @if ($errors->has('login')) aria-describedby="login-error" aria-invalid="true" @endif
-                >
-                <x-sik-icon name="user" class="sik-login-field-icon" />
+                <div class="sik-login-control-wrap">
+                    <x-sik-icon name="user" class="sik-login-field-icon" />
+                    <input
+                        id="login"
+                        @class(['sik-login-control', 'is-invalid' => $errors->has('login')])
+                        type="text"
+                        name="login"
+                        value="{{ old('login') }}"
+                        required
+                        autofocus
+                        autocomplete="username"
+                        placeholder="Masukkan username"
+                        @if ($errors->has('login')) aria-describedby="login-error" aria-invalid="true" @endif
+                    >
+                </div>
                 @error('login')
                     <p class="sik-login-error" id="login-error" role="alert">{{ $message }}</p>
                 @enderror
@@ -40,17 +42,23 @@
                     <label class="sik-login-label" for="password">Kata Sandi</label>
                     <a class="sik-forgot-link" href="{{ route('password.request') }}">Lupa kata sandi?</a>
                 </div>
-                <input
-                    id="password"
-                    class="sik-login-control"
-                    type="password"
-                    name="password"
-                    required
-                    autocomplete="current-password"
-                    placeholder="Masukkan kata sandi"
-                    @if ($errors->has('password')) aria-describedby="password-error" aria-invalid="true" @endif
-                >
-                <x-sik-icon name="lock" class="sik-login-field-icon" />
+                <div class="sik-login-control-wrap">
+                    <x-sik-icon name="lock" class="sik-login-field-icon" />
+                    <input
+                        id="password"
+                        @class(['sik-login-control', 'is-invalid' => $errors->has('password')])
+                        type="password"
+                        name="password"
+                        required
+                        autocomplete="current-password"
+                        placeholder="Masukkan kata sandi"
+                        @if ($errors->has('password')) aria-describedby="password-error" aria-invalid="true" @endif
+                    >
+                    <button class="sik-password-toggle" type="button" data-password-toggle aria-controls="password" aria-label="Tampilkan kata sandi" aria-pressed="false">
+                        <x-sik-icon name="eye" data-eye-icon />
+                        <x-sik-icon name="eye-off" data-eye-off-icon hidden />
+                    </button>
+                </div>
                 @error('password')
                     <p class="sik-login-error" id="password-error" role="alert">{{ $message }}</p>
                 @enderror

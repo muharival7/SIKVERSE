@@ -4,25 +4,37 @@
 @section('content')
 <div class="container-fluid py-4 px-4">
 
-    {{-- Header --}}
-    <div class="mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
         <div>
-            <h2 class="fw-bold mb-1">{{ $selectedInstructor ? 'Rekap Absensi Dosen' : 'Rekap Kehadiran Santri' }}</h2>
+            <h1 class="h2 fw-bold mb-1">Rekap Kehadiran Santri</h1>
             <p class="text-muted mb-0">
                 @if ($selectedInstructor)
-                    Menampilkan rekap kelompok yang diampu oleh {{ $selectedInstructor->user?->name ?? $selectedInstructor->nama }}.
+                    Rekap kelompok yang diampu oleh {{ $selectedInstructor->user?->name ?? $selectedInstructor->nama }}.
                 @elseif ($isAdmin)
-                    Menampilkan rekap seluruh kelompok dan kegiatan SIK.
+                    Rekap seluruh kelompok dan kegiatan SIK.
                 @else
-                    Menampilkan rekap kelompok yang Anda ampu.
+                    Rekap kelompok yang Anda ampu.
                 @endif
-                Kehadiran dihitung dari {{ config('sik.attendance.meeting_count', 16) }} pertemuan; minimal {{ config('sik.attendance.minimum_present', 14) }} kali hadir untuk memenuhi syarat.
+                Ambang kehadiran: {{ config('sik.attendance.minimum_present', 14) }} dari {{ config('sik.attendance.meeting_count', 16) }} pertemuan.
             </p>
         </div>
-
-        @if ($selectedInstructor)
-            <a href="{{ route('users.index') }}" class="btn btn-outline-secondary mt-2">Kembali ke Data Dosen</a>
-        @endif
+        <div class="d-flex flex-wrap align-items-end gap-2">
+            <form method="GET" action="{{ route('rekap-kehadiran-sik.index') }}" class="d-flex align-items-end gap-2">
+                @if ($isAdmin && request()->filled('instruktur_id'))
+                    <input type="hidden" name="instruktur_id" value="{{ request('instruktur_id') }}">
+                @endif
+                <label for="periode-sik-filter" class="small text-muted">Periode
+                    <select id="periode-sik-filter" name="periode_sik_id" class="form-select mt-1">
+                        <option value="">Semua periode</option>
+                        @foreach ($periods as $periode)
+                            <option value="{{ $periode->id }}" @selected($selectedPeriodId === (int) $periode->id)>{{ $periode->nama_periode }}</option>
+                        @endforeach
+                    </select>
+                </label>
+                <button class="btn btn-outline-secondary" type="submit">Tampilkan</button>
+            </form>
+            <a class="btn btn-outline-danger" href="{{ route('rekap-kehadiran-sik.export', request()->only(['periode_sik_id', 'instruktur_id'])) }}">Export Excel</a>
+        </div>
     </div>
 
     {{-- Ringkasan --}}
@@ -89,13 +101,13 @@
                             <th>Nama Santri</th>
                             <th>Nomor Induk</th>
                             <th>Kelompok</th>
-                            <th>Kegiatan</th>
+                            <th class="text-nowrap" title="Waktu masuk terakhir yang tersimpan untuk kegiatan ini">Jam Datang</th>
                             <th class="text-center">Total Pertemuan</th>
                             <th class="text-center">Hadir</th>
                             <th class="text-center">Izin</th>
                             <th class="text-center">Sakit</th>
                             <th class="text-center">Alpha</th>
-                            <th class="text-center">Tidak Lengkap</th>
+                            <th class="text-center text-nowrap" title="Waktu pulang terakhir yang tersimpan untuk kegiatan ini">Jam Pulang</th>
                             <th class="text-center">Persentase</th>
                             <th class="text-center">Status</th>
                         </tr>
@@ -111,11 +123,6 @@
 
                                 $namaKelompok = $item->anggotaPeriode?->kelompok?->nama
                                     ?? $item->anggotaPeriode?->kelompok?->nama_kelompok
-                                    ?? '-';
-
-                                $namaKegiatan = $item->kegiatan?->nama
-                                    ?? $item->kegiatan?->nama_kegiatan
-                                    ?? $item->kegiatan?->judul
                                     ?? '-';
 
                                 $status = $item->status_kehadiran ?? '-';
@@ -141,7 +148,12 @@
 
                                 <td>{{ $namaKelompok }}</td>
 
-                                <td>{{ $namaKegiatan }}</td>
+                                <td class="text-nowrap">
+                                    {{ $item->jam_datang ? substr($item->jam_datang, 0, 5) : '—' }}
+                                    @if ($item->jam_datang_pertemuan)
+                                        <span class="d-block small text-muted">Pertemuan {{ $item->jam_datang_pertemuan }} · terakhir tercatat</span>
+                                    @endif
+                                </td>
 
                                 <td class="text-center">
                                     {{ $item->total_pertemuan ?? 0 }}
@@ -163,8 +175,11 @@
                                     {{ $item->jumlah_alpha ?? 0 }}
                                 </td>
 
-                                <td class="text-center">
-                                    {{ $item->jumlah_tidak_lengkap ?? 0 }}
+                                <td class="text-center text-nowrap">
+                                    {{ $item->jam_pulang ? substr($item->jam_pulang, 0, 5) : '—' }}
+                                    @if ($item->jam_pulang_pertemuan)
+                                        <span class="d-block small text-muted">Pertemuan {{ $item->jam_pulang_pertemuan }} · terakhir tercatat</span>
+                                    @endif
                                 </td>
 
                                 <td class="text-center fw-bold">

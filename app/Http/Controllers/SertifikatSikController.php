@@ -11,6 +11,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -163,6 +164,7 @@ class SertifikatSikController extends Controller
     {
         return KelulusanSik::with(['anggotaPeriodeSik.santri', 'anggotaPeriodeSik.periode'])
             ->where('status', 'Lulus')
+            ->meetsAttendanceThreshold()
             ->where(function ($query) use ($sertifikat): void {
                 $query->whereDoesntHave('sertifikat');
 
@@ -177,7 +179,7 @@ class SertifikatSikController extends Controller
      */
     private function validatedData(Request $request, ?SertifikatSik $sertifikat = null): array
     {
-        return $request->validate([
+        $validated = $request->validate([
             'kelulusan_sik_id' => [
                 'required',
                 Rule::exists('kelulusan_sik', 'id')->where('status', 'Lulus'),
@@ -195,5 +197,19 @@ class SertifikatSikController extends Controller
             'tanggal_terbit' => ['nullable', 'date'],
             'keterangan' => ['nullable', 'string'],
         ]);
+
+        $isEligible = KelulusanSik::query()
+            ->whereKey($validated['kelulusan_sik_id'])
+            ->where('status', 'Lulus')
+            ->meetsAttendanceThreshold()
+            ->exists();
+
+        if (! $isEligible) {
+            throw ValidationException::withMessages([
+                'kelulusan_sik_id' => 'Sertifikat hanya dapat diterbitkan untuk santri yang memenuhi ambang kehadiran.',
+            ]);
+        }
+
+        return $validated;
     }
 }

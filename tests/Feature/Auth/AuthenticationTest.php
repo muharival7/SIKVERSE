@@ -10,11 +10,29 @@ test('login screen can be rendered', function () {
 
     $response->assertOk()
         ->assertSee('name="login"', false)
+        ->assertSee('class="sik-login-control-wrap"', false)
+        ->assertSee('data-password-toggle', false)
+        ->assertSee('Masukkan username')
         ->assertDontSee('name="role"', false);
 });
 
-test('users can authenticate using the login screen', function () {
+test('invalid credentials show the login error below the input and mark the field invalid', function () {
     $user = User::factory()->create();
+
+    $this->followingRedirects()->from('/login')->post('/login', [
+        'login' => $user->email,
+        'password' => 'wrong-password',
+    ])->assertOk()
+        ->assertSee('These credentials do not match our records.')
+        ->assertSee('class="sik-login-control is-invalid"', false)
+        ->assertSee('id="login-error" role="alert"', false)
+        ->assertSee('data-password-toggle', false);
+
+    $this->assertGuest();
+});
+
+test('users can authenticate using the login screen', function () {
+    $user = User::factory()->create(['role' => UserRole::Admin]);
 
     $response = $this->post('/login', [
         'login' => $user->email,
@@ -66,6 +84,24 @@ test('santri can sign in with their student number', function () {
     $this->assertAuthenticatedAs($user);
 });
 
+test('inactive santri cannot sign in with their student number', function () {
+    $user = User::factory()->create(['role' => UserRole::Santri]);
+    Santri::create([
+        'user_id' => $user->id,
+        'nomor_induk' => 'SIK-2026-002',
+        'nama' => $user->name,
+        'jenis_kelamin' => 'Laki-laki',
+        'status' => 'Tidak Aktif',
+    ]);
+
+    $this->from('/login')->post('/login', [
+        'login' => 'SIK-2026-002',
+        'password' => 'password',
+    ])->assertRedirect('/login')->assertSessionHasErrors('login');
+
+    $this->assertGuest();
+});
+
 test('inactive infrastructure accounts cannot sign in', function () {
     $user = User::factory()->create(['role' => UserRole::InfrastrukturSik]);
     InfrastrukturSik::create([
@@ -82,13 +118,15 @@ test('inactive infrastructure accounts cannot sign in', function () {
     $this->assertGuest();
 });
 
-test('synthetic sik test accounts do not need a deliverable verification email in local tests', function () {
+test('unverified synthetic accounts remain unverified when local email verification is disabled', function () {
+    config()->set('sik.auth.require_email_verification', false);
+
     $user = User::factory()->unverified()->create([
         'email' => 'instruktur@sik.test',
         'role' => UserRole::InfrastrukturSik,
     ]);
 
-    expect($user->hasVerifiedEmail())->toBeTrue();
+    expect($user->hasVerifiedEmail())->toBeFalse();
 });
 
 test('users can logout', function () {

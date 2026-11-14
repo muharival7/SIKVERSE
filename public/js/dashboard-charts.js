@@ -31,7 +31,7 @@
         }
 
         const width = 760;
-        const height = 280;
+        const height = chart.dataset.chartSize === 'compact' ? 210 : 280;
         const plot = { left: 48, right: 18, top: 18, bottom: 48 };
         const plotWidth = width - plot.left - plot.right;
         const plotHeight = height - plot.top - plot.bottom;

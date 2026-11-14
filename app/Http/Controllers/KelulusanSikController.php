@@ -8,6 +8,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class KelulusanSikController extends Controller
@@ -98,7 +99,7 @@ class KelulusanSikController extends Controller
      */
     private function validatedData(Request $request, ?KelulusanSik $kelulusan = null): array
     {
-        return $request->validate([
+        $validated = $request->validate([
             'anggota_periode_sik_id' => [
                 'required',
                 'exists:anggota_periode_sik,id',
@@ -108,5 +109,20 @@ class KelulusanSikController extends Controller
             'tanggal_kelulusan' => ['nullable', 'date'],
             'keterangan' => ['nullable', 'string', 'max:1000'],
         ]);
+
+        if ($validated['status'] === 'Lulus') {
+            $anggota = AnggotaPeriodeSik::query()->findOrFail($validated['anggota_periode_sik_id']);
+            $jumlahHadir = $anggota->absensi()->where('status', 'Hadir')->count();
+            $minimumHadir = (int) config('sik.attendance.minimum_present');
+            $totalPertemuan = (int) config('sik.attendance.meeting_count');
+
+            if ($jumlahHadir < $minimumHadir) {
+                throw ValidationException::withMessages([
+                    'status' => "Santri harus hadir minimal {$minimumHadir} dari {$totalPertemuan} pertemuan. Kehadiran saat ini {$jumlahHadir}.",
+                ]);
+            }
+        }
+
+        return $validated;
     }
 }

@@ -60,6 +60,7 @@ class LoginRequest extends FormRequest
         }
 
         $isInactive = match ($this->user()?->role) {
+            UserRole::Santri => $this->user()?->santri?->status !== 'Aktif',
             UserRole::InfrastrukturSik => $this->user()?->infrastrukturSik?->status === 'Tidak Aktif',
             UserRole::KaLabMutu => $this->user()?->kaLabMutu?->status === 'Tidak Aktif',
             default => false,

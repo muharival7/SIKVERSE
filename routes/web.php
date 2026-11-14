@@ -6,17 +6,15 @@ use App\Http\Controllers\AnggotaPeriodeSikController;
 use App\Http\Controllers\BuktiKetidakhadiranController;
 use App\Http\Controllers\ChangePasswordController;
 use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\JadwalController;
 use App\Http\Controllers\KegiatanController;
 use App\Http\Controllers\KelompokController;
 use App\Http\Controllers\KelulusanSikController;
-use App\Http\Controllers\MataPelajaranController;
 use App\Http\Controllers\NilaiController;
 use App\Http\Controllers\PeriodeSikController;
 use App\Http\Controllers\PertemuanController;
 use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\RekapKehadiranSikController;
 use App\Http\Controllers\RekapAbsensiDosenController;
+use App\Http\Controllers\RekapKehadiranSikController;
 use App\Http\Controllers\SantriController;
 use App\Http\Controllers\SertifikatSikController;
 use App\Http\Controllers\UserManagementController;
@@ -109,15 +107,7 @@ Route::middleware($authenticatedMiddleware)->group(function (): void {
     Route::get('/bukti-ketidakhadiran/{buktiKetidakhadiran}/download', [
         BuktiKetidakhadiranController::class,
         'download',
-    ])->middleware('role:admin,santri')->name('bukti-ketidakhadiran.download');
-
-    Route::middleware('role:admin,infrastruktur_sik')->group(function (): void {
-        Route::get('/verifikasi-izin', [BuktiKetidakhadiranController::class, 'index'])
-            ->name('verifikasi-izin.index');
-
-        Route::patch('/verifikasi-izin/{buktiKetidakhadiran}', [BuktiKetidakhadiranController::class, 'update'])
-            ->name('verifikasi-izin.update');
-    });
+    ])->middleware('role:admin,santri,infrastruktur_sik')->name('bukti-ketidakhadiran.download');
 
     // ==================================================
     // FITUR KHUSUS ADMIN
@@ -127,19 +117,32 @@ Route::middleware($authenticatedMiddleware)->group(function (): void {
 
         Route::get('/rekap-absensi-dosen', [RekapAbsensiDosenController::class, 'index'])
             ->name('rekap-absensi-dosen.index');
+        Route::get('/rekap-absensi-dosen/export', [RekapAbsensiDosenController::class, 'export'])
+            ->name('rekap-absensi-dosen.export');
+        Route::get('/rekap-absensi-dosen/{infrastrukturSik}', [RekapAbsensiDosenController::class, 'show'])
+            ->whereNumber('infrastrukturSik')
+            ->name('rekap-absensi-dosen.show');
         Route::post('/rekap-absensi-dosen', [RekapAbsensiDosenController::class, 'store'])
             ->name('rekap-absensi-dosen.store');
 
         Route::resource('users', UserManagementController::class)->except(['show']);
 
+        Route::get('/santris/import/template', [SantriController::class, 'downloadImportTemplate'])
+            ->name('santris.import.template');
+        Route::get('/santris/import/credentials/{token}', [SantriController::class, 'downloadImportCredentials'])
+            ->whereUuid('token')
+            ->name('santris.import.credentials');
+        Route::get('/santris/import', [SantriController::class, 'importForm'])
+            ->name('santris.import');
+        Route::post('/santris/import/preview', [SantriController::class, 'previewImport'])
+            ->name('santris.import.preview');
+        Route::post('/santris/import/recheck', [SantriController::class, 'recheckImport'])
+            ->name('santris.import.recheck');
+        Route::post('/santris/import/commit', [SantriController::class, 'commitImport'])
+            ->name('santris.import.commit');
+
         // Data Santri
         Route::resource('santris', SantriController::class);
-
-        // Mata Pelajaran
-        Route::resource('mata-pelajaran', MataPelajaranController::class);
-
-        // Jadwal
-        Route::resource('jadwal', JadwalController::class);
 
         // Manajemen Periode SIK
         Route::resource('periode-sik', PeriodeSikController::class)
@@ -153,7 +156,7 @@ Route::middleware($authenticatedMiddleware)->group(function (): void {
         Route::resource('anggota-periode-sik', AnggotaPeriodeSikController::class)
             ->except(['show']);
 
-        // Manajemen Kegiatan
+        // Kegiatan tetap menjadi data induk untuk pertemuan dan absensi SIK.
         Route::resource('kegiatan', KegiatanController::class)
             ->except(['show']);
 
@@ -181,6 +184,8 @@ Route::middleware($authenticatedMiddleware)->group(function (): void {
 
         Route::get('/rekap-kehadiran-sik', [RekapKehadiranSikController::class, 'index'])
             ->name('rekap-kehadiran-sik.index');
+        Route::get('/rekap-kehadiran-sik/export', [RekapKehadiranSikController::class, 'export'])
+            ->name('rekap-kehadiran-sik.export');
     });
 
     Route::middleware('role:infrastruktur_sik')->group(function (): void {

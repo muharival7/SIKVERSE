@@ -70,6 +70,29 @@
             <rect x="5" y="10" width="14" height="11" rx="2" />
             <path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3" />
             @break
+        @case('lock-keyhole')
+            <rect x="5" y="10" width="14" height="11" rx="2" />
+            <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+            <circle cx="12" cy="15" r="1.2" />
+            <path d="M12 16.2V18" />
+            @break
+        @case('mail')
+            <rect x="3" y="5" width="18" height="14" rx="2" />
+            <path d="m4 7 8 6 8-6" />
+            @break
+        @case('id-card')
+            <rect x="3" y="5" width="18" height="14" rx="2" />
+            <circle cx="8" cy="11" r="2" />
+            <path d="M5.5 16a2.8 2.8 0 0 1 5 0M13 10h5M13 14h5" />
+            @break
+        @case('eye')
+            <path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z" />
+            <circle cx="12" cy="12" r="2.5" />
+            @break
+        @case('eye-off')
+            <path d="m3 3 18 18M10.6 6.2A10.8 10.8 0 0 1 12 6c6.1 0 9.5 6 9.5 6a15 15 0 0 1-3 3.6M6.2 6.7C3.8 8.2 2.5 12 2.5 12s3.4 6 9.5 6a10.8 10.8 0 0 0 2.1-.2" />
+            <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+            @break
         @case('clock')
             <circle cx="12" cy="12" r="8.5" />
             <path d="M12 7v5l3.5 2" />
@@ -98,6 +121,9 @@
             @break
         @case('download')
             <path d="M12 3v11m-5-5 5 5 5-5M5 20h14" />
+            @break
+        @case('upload')
+            <path d="M12 16V4m-5 5 5-5 5 5M5 15v4a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-4" />
             @break
         @case('logout')
             <path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10" />

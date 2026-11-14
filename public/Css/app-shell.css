@@ -6,8 +6,8 @@
     --sik-ink: #292325;
     --sik-muted: #817b7c;
     --sik-shell-bg: #f5f6f8;
-    --sik-topbar-height: clamp(82px, 7vw, 132px);
-    --sik-topbar-art-width: min(75vw, 1450px);
+    --sik-topbar-height: clamp(78px, 5.5vw, 100px);
+    --sik-topbar-art-width: min(68vw, 1200px);
 }
 
 body {
@@ -399,6 +399,10 @@ main.sik-app-main--sidebar {
 }
 
 @media (max-width: 991.98px) {
+    :root {
+        --sik-topbar-height: 74px;
+    }
+
     .sik-topbar {
         min-height: 74px;
         justify-content: flex-start;

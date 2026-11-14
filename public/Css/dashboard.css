@@ -585,6 +585,22 @@
     padding-bottom: 1.1rem;
 }
 
+.sd-trend-card--compact {
+    max-width: 1120px;
+    margin-inline: auto;
+    padding: 1.1rem 1.3rem .85rem;
+}
+
+.sd-trend-card--compact .sd-chart {
+    max-width: 900px;
+    min-height: 0;
+    margin: .65rem auto 0;
+}
+
+.sd-trend-card--compact .sd-chart-empty {
+    min-height: 135px;
+}
+
 .sd-trend-card .sd-card-heading {
     align-items: center;
 }
@@ -694,6 +710,24 @@
 .sd-chart-note {
     margin: .1rem 0 0;
     color: #8b8384;
+    font-size: .72rem;
+}
+
+.sd-kalab-failures {
+    margin-block: 1rem;
+}
+
+.sd-kalab-failures-table-wrap {
+    margin-top: .85rem;
+}
+
+.sd-kalab-failures .table {
+    font-size: .82rem;
+}
+
+.sd-kalab-failures-note {
+    margin-top: .7rem;
+    color: var(--sd-muted);
     font-size: .72rem;
 }
 

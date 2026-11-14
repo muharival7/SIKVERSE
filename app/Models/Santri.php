@@ -55,6 +55,11 @@ class Santri extends Model
         return $this->hasMany(AnggotaPeriodeSik::class, 'santri_id');
     }
 
+    public function anggotaPeriodeTerbaru(): HasOne
+    {
+        return $this->hasOne(AnggotaPeriodeSik::class, 'santri_id')->latestOfMany();
+    }
+
     public function kelulusan(): HasOne
     {
         return $this->hasOne(Kelulusan::class);

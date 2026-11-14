@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -48,6 +49,18 @@ class KelulusanSik extends Model
         return $this->hasOne(
             SertifikatSik::class,
             'kelulusan_sik_id'
+        );
+    }
+
+    public function scopeMeetsAttendanceThreshold(Builder $query): Builder
+    {
+        $minimumHadir = (int) config('sik.attendance.minimum_present');
+
+        return $query->whereHas(
+            'anggotaPeriodeSik.absensi',
+            fn (Builder $absensiQuery) => $absensiQuery->where('status', 'Hadir'),
+            '>=',
+            $minimumHadir
         );
     }
 }

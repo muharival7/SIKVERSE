@@ -21,37 +21,77 @@
 
             <div class="sik-login-field sik-register-field">
                 <label class="sik-login-label" for="email">Alamat Email</label>
-                <input id="email" class="sik-login-control" type="email" name="email" value="{{ old('email') }}" required autocomplete="email" placeholder="Masukkan alamat email">
-                @error('email')<p class="sik-login-error" role="alert">{{ $message }}</p>@enderror
+                <div class="sik-login-control-wrap">
+                    <x-sik-icon name="mail" class="sik-login-field-icon" />
+                    <input id="email" @class(['sik-login-control', 'is-invalid' => $errors->has('email')]) type="email" name="email" value="{{ old('email') }}" required autocomplete="email" placeholder="Masukkan alamat email" @if ($errors->has('email')) aria-describedby="register-email-error" aria-invalid="true" @endif>
+                </div>
+                @error('email')<p class="sik-login-error" id="register-email-error" role="alert">{{ $message }}</p>@enderror
             </div>
 
             <div class="sik-login-field sik-register-field">
                 <label class="sik-login-label" for="name">Nama Lengkap</label>
-                <input id="name" class="sik-login-control" type="text" name="name" value="{{ old('name') }}" required autocomplete="name" placeholder="Masukkan nama lengkap">
-                @error('name')<p class="sik-login-error" role="alert">{{ $message }}</p>@enderror
+                <div class="sik-login-control-wrap">
+                    <x-sik-icon name="user" class="sik-login-field-icon" />
+                    <input id="name" @class(['sik-login-control', 'is-invalid' => $errors->has('name')]) type="text" name="name" value="{{ old('name') }}" required autocomplete="name" placeholder="Masukkan nama lengkap" @if ($errors->has('name')) aria-describedby="register-name-error" aria-invalid="true" @endif>
+                </div>
+                @error('name')<p class="sik-login-error" id="register-name-error" role="alert">{{ $message }}</p>@enderror
             </div>
 
             <div class="sik-login-field sik-register-field">
                 <label class="sik-login-label" for="nomor_induk">Nomor Induk Mahasiswa</label>
-                <input id="nomor_induk" class="sik-login-control" type="text" name="nomor_induk" value="{{ old('nomor_induk') }}" required autocomplete="username" placeholder="Masukkan NIM">
-                @error('nomor_induk')<p class="sik-login-error" role="alert">{{ $message }}</p>@enderror
+                <div class="sik-login-control-wrap">
+                    <x-sik-icon name="id-card" class="sik-login-field-icon" />
+                    <input id="nomor_induk" @class(['sik-login-control', 'is-invalid' => $errors->has('nomor_induk')]) type="text" name="nomor_induk" value="{{ old('nomor_induk') }}" required autocomplete="username" placeholder="Masukkan NIM" @if ($errors->has('nomor_induk')) aria-describedby="register-nim-error" aria-invalid="true" @endif>
+                </div>
+                @error('nomor_induk')<p class="sik-login-error" id="register-nim-error" role="alert">{{ $message }}</p>@enderror
             </div>
 
             <div class="sik-login-field sik-register-field">
                 <label class="sik-login-label" for="program_studi">Program Studi</label>
-                <input id="program_studi" class="sik-login-control" type="text" name="program_studi" value="{{ old('program_studi') }}" required autocomplete="organization-title" placeholder="Masukkan program studi">
-                @error('program_studi')<p class="sik-login-error" role="alert">{{ $message }}</p>@enderror
+                <div class="sik-login-control-wrap">
+                    <x-sik-icon name="graduation" class="sik-login-field-icon" />
+                    <input id="program_studi" @class(['sik-login-control', 'is-invalid' => $errors->has('program_studi')]) type="text" name="program_studi" value="{{ old('program_studi') }}" required autocomplete="organization-title" placeholder="Masukkan program studi" @if ($errors->has('program_studi')) aria-describedby="register-program-error" aria-invalid="true" @endif>
+                </div>
+                @error('program_studi')<p class="sik-login-error" id="register-program-error" role="alert">{{ $message }}</p>@enderror
+            </div>
+
+            <div class="sik-login-field sik-register-field">
+                <label class="sik-login-label" for="jenis_kelamin">Jenis Kelamin</label>
+                <div class="sik-login-control-wrap">
+                    <x-sik-icon name="users" class="sik-login-field-icon" />
+                    <select id="jenis_kelamin" @class(['sik-login-control', 'is-invalid' => $errors->has('jenis_kelamin')]) name="jenis_kelamin" required @if ($errors->has('jenis_kelamin')) aria-describedby="register-gender-error" aria-invalid="true" @endif>
+                        <option value="">Pilih jenis kelamin</option>
+                        <option value="Laki-laki" @selected(old('jenis_kelamin') === 'Laki-laki')>Laki-laki</option>
+                        <option value="Perempuan" @selected(old('jenis_kelamin') === 'Perempuan')>Perempuan</option>
+                    </select>
+                </div>
+                @error('jenis_kelamin')<p class="sik-login-error" id="register-gender-error" role="alert">{{ $message }}</p>@enderror
             </div>
 
             <div class="sik-login-field sik-register-field">
                 <label class="sik-login-label" for="password">Kata Sandi</label>
-                <input id="password" class="sik-login-control" type="password" name="password" required autocomplete="new-password" placeholder="Buat kata sandi">
-                @error('password')<p class="sik-login-error" role="alert">{{ $message }}</p>@enderror
+                <div class="sik-login-control-wrap">
+                    <x-sik-icon name="lock" class="sik-login-field-icon" />
+                    <input id="password" @class(['sik-login-control', 'is-invalid' => $errors->has('password')]) type="password" name="password" required autocomplete="new-password" placeholder="Buat kata sandi" @if ($errors->has('password')) aria-describedby="register-password-error" aria-invalid="true" @endif>
+                    <button class="sik-password-toggle" type="button" data-password-toggle aria-controls="password" aria-label="Tampilkan kata sandi" aria-pressed="false">
+                        <x-sik-icon name="eye" data-eye-icon />
+                        <x-sik-icon name="eye-off" data-eye-off-icon hidden />
+                    </button>
+                </div>
+                @error('password')<p class="sik-login-error" id="register-password-error" role="alert">{{ $message }}</p>@enderror
             </div>
 
             <div class="sik-login-field sik-register-field">
                 <label class="sik-login-label" for="password_confirmation">Konfirmasi Kata Sandi</label>
-                <input id="password_confirmation" class="sik-login-control" type="password" name="password_confirmation" required autocomplete="new-password" placeholder="Ulangi kata sandi">
+                <div class="sik-login-control-wrap">
+                    <x-sik-icon name="lock-keyhole" class="sik-login-field-icon" />
+                    <input id="password_confirmation" @class(['sik-login-control', 'is-invalid' => $errors->has('password_confirmation')]) type="password" name="password_confirmation" required autocomplete="new-password" placeholder="Ulangi kata sandi" @if ($errors->has('password_confirmation')) aria-describedby="register-password-confirmation-error" aria-invalid="true" @endif>
+                    <button class="sik-password-toggle" type="button" data-password-toggle aria-controls="password_confirmation" aria-label="Tampilkan kata sandi" aria-pressed="false">
+                        <x-sik-icon name="eye" data-eye-icon />
+                        <x-sik-icon name="eye-off" data-eye-off-icon hidden />
+                    </button>
+                </div>
+                @error('password_confirmation')<p class="sik-login-error" id="register-password-confirmation-error" role="alert">{{ $message }}</p>@enderror
             </div>
 
             <button class="sik-login-submit" type="submit">Daftar</button>

@@ -74,7 +74,7 @@ function createAttendanceEvidenceFixture(): array
     return compact('santriUser', 'instrukturUser', 'instruktur', 'absensi');
 }
 
-test('a santri can submit their own evidence and the assigned instructor can verify it', function () {
+test('a santri can submit their own evidence without requiring a verification page', function () {
     Storage::fake('local');
     $fixture = createAttendanceEvidenceFixture();
 
@@ -93,41 +93,78 @@ test('a santri can submit their own evidence and the assigned instructor can ver
     Storage::disk('local')->assertExists($bukti->file_bukti);
 
     $this->actingAs($fixture['instrukturUser'])
-        ->get(route('verifikasi-izin.index'))
-        ->assertOk()
-        ->assertSee('Santri Penguji');
-
-    $this->patch(route('verifikasi-izin.update', $bukti), [
-        'status_verifikasi' => 'Diterima',
-        'catatan_pemeriksaan' => 'Bukti sesuai.',
-    ])->assertRedirect();
+        ->get('/verifikasi-izin')
+        ->assertNotFound();
 
     $this->assertDatabaseHas('bukti_ketidakhadiran', [
         'id' => $bukti->id,
-        'status_verifikasi' => 'Diterima',
-        'diperiksa_oleh' => $fixture['instruktur']->id,
+        'status_verifikasi' => 'Menunggu',
     ]);
 });
 
-test('an instructor cannot review evidence for another instructor group', function () {
+test('verification route and instructor navigation are removed while other roles remain isolated', function () {
     $fixture = createAttendanceEvidenceFixture();
-    $otherUser = User::factory()->create(['role' => UserRole::InfrastrukturSik]);
-    InfrastrukturSik::create([
-        'user_id' => $otherUser->id,
-        'nama' => 'Instruktur Lain',
-        'status' => 'Aktif',
-    ]);
+    $admin = User::factory()->create(['role' => UserRole::Admin]);
+    $kaLab = User::factory()->create(['role' => UserRole::KaLabMutu]);
+
+    $this->actingAs($admin)
+        ->get('/verifikasi-izin')
+        ->assertNotFound();
+
+    $this->patch('/verifikasi-izin/1', [
+        'status_verifikasi' => 'Diterima',
+    ])->assertNotFound();
+
+    $this->actingAs($fixture['instrukturUser'])
+        ->get(route(UserRole::InfrastrukturSik->dashboardRoute()))
+        ->assertOk()
+        ->assertDontSee('Bukti Izin')
+        ->assertDontSee('verifikasi-izin');
+
+    $this->actingAs($fixture['santriUser'])
+        ->get('/verifikasi-izin')
+        ->assertNotFound();
+
+    $this->actingAs($kaLab)
+        ->get('/verifikasi-izin')
+        ->assertNotFound();
+
+    $this->get(route(UserRole::KaLabMutu->dashboardRoute()))
+        ->assertOk()
+        ->assertDontSee('Bukti Izin')
+        ->assertDontSee('verifikasi-izin');
+});
+
+test('an assigned instructor can download evidence and unrelated roles cannot', function () {
+    Storage::fake('local');
+    $fixture = createAttendanceEvidenceFixture();
+    $filePath = 'bukti-ketidakhadiran/surat-izin.pdf';
+    Storage::disk('local')->put($filePath, "%PDF-1.4\nBukti izin test\n");
     $bukti = BuktiKetidakhadiran::create([
         'absensi_sik_id' => $fixture['absensi']->id,
         'jenis_bukti' => 'Izin',
-        'file_bukti' => 'bukti-ketidakhadiran/test.pdf',
+        'file_bukti' => $filePath,
         'status_verifikasi' => 'Menunggu',
     ]);
 
-    $this->actingAs($otherUser)
-        ->patch(route('verifikasi-izin.update', $bukti), [
-            'status_verifikasi' => 'Diterima',
-            'catatan_pemeriksaan' => 'Bukti sesuai.',
-        ])
+    $this->actingAs($fixture['instrukturUser'])
+        ->get(route('bukti-ketidakhadiran.download', $bukti))
+        ->assertOk();
+
+    $otherInstructor = User::factory()->create(['role' => UserRole::InfrastrukturSik]);
+    InfrastrukturSik::create([
+        'user_id' => $otherInstructor->id,
+        'nama' => 'Instruktur Tidak Terkait',
+        'status' => 'Aktif',
+    ]);
+
+    $this->actingAs($otherInstructor)
+        ->get(route('bukti-ketidakhadiran.download', $bukti))
+        ->assertForbidden();
+
+    $kaLab = User::factory()->create(['role' => UserRole::KaLabMutu]);
+
+    $this->actingAs($kaLab)
+        ->get(route('bukti-ketidakhadiran.download', $bukti))
         ->assertForbidden();
 });

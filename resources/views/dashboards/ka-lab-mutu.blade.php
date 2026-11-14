@@ -34,6 +34,53 @@
         </article>
     </section>
 
+    <section class="sd-card sd-kalab-failures" aria-labelledby="kalab-failures-title">
+        <div class="sd-card-heading">
+            <div>
+                <span class="sd-section-kicker">RINCIAN EVALUASI</span>
+                <h2 id="kalab-failures-title">Santri dengan status Tidak Lulus</h2>
+                <p class="sd-card-description">Alasan dihitung dari absensi tersimpan dan catatan evaluasi. Ambang: {{ $graduationMinimumPresent }} dari {{ $graduationMeetingCount }} pertemuan.</p>
+            </div>
+        </div>
+        <div class="table-responsive sd-kalab-failures-table-wrap">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Santri</th>
+                        <th scope="col">Periode</th>
+                        <th scope="col" class="text-center">Kehadiran</th>
+                        <th scope="col" class="text-center">Tidak hadir</th>
+                        <th scope="col" class="text-center">Batas minimal</th>
+                        <th scope="col">Alasan</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse ($graduationFailures as $record)
+                        <tr>
+                            <td>
+                                <strong>{{ $record->anggotaPeriodeSik?->santri?->nama ?? 'Data santri tidak tersedia' }}</strong>
+                                <span class="d-block small text-muted">{{ $record->anggotaPeriodeSik?->santri?->nomor_induk ?? '—' }}</span>
+                            </td>
+                            <td>{{ $record->anggotaPeriodeSik?->periode?->nama_periode ?? '—' }}</td>
+                            <td class="text-center text-nowrap">
+                                <strong>{{ $record->jumlah_hadir_aktual }}/{{ $graduationMeetingCount }}</strong>
+                                <span class="d-block small text-muted">{{ number_format($record->persentase_kehadiran_aktual, 1) }}%</span>
+                            </td>
+                            <td class="text-center">{{ $record->jumlah_tidak_hadir_aktual }}</td>
+                            <td class="text-center text-nowrap">{{ $graduationMinimumPresent }} kali</td>
+                            <td class="small">{{ $record->alasan_ketidaklulusan }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="6" class="text-center text-muted py-4">Belum ada santri berstatus Tidak Lulus.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+        @if ($graduationFailures->isNotEmpty())
+            <p class="sd-kalab-failures-note mb-0">Menampilkan maksimal 10 evaluasi Tidak Lulus terbaru.</p>
+        @endif
+    </section>
+
     <section class="sd-kalab-chart-grid" aria-label="Grafik evaluasi kelulusan">
         <article class="sd-card sd-kalab-chart-card">
             <div class="sd-card-heading">
