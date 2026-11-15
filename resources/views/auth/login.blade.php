@@ -74,8 +74,6 @@
             <button class="sik-login-submit" type="submit">Masuk</button>
         </form>
 
-        @if (Route::has('register'))
-            <p class="sik-login-register">Belum Punya Akun? <a href="{{ route('register') }}">Registrasi</a></p>
-        @endif
+        
     </div>
 </x-guest-layout>
