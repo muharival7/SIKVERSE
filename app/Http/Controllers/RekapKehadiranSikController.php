@@ -197,31 +197,60 @@ class RekapKehadiranSikController extends Controller
      * Menampilkan laporan SIK untuk Ka-Lab Mutu.
      * Ka-Lab Mutu hanya memiliki akses melihat laporan.
      */
-    public function laporan(): View
-    {
-        $kelulusanTahunan = KelulusanSik::query()
-            ->join('anggota_periode_sik as anggota', 'anggota.id', '=', 'kelulusan_sik.anggota_periode_sik_id')
-            ->join('periode_sik as periode', 'periode.id', '=', 'anggota.periode_sik_id')
-            ->select('periode.tahun')
-            ->selectRaw('COUNT(*) as total_kelulusan')
-            ->selectRaw("SUM(CASE WHEN kelulusan_sik.status = 'Lulus' THEN 1 ELSE 0 END) as jumlah_lulus")
-            ->selectRaw("SUM(CASE WHEN kelulusan_sik.status = 'Tidak Lulus' THEN 1 ELSE 0 END) as jumlah_tidak_lulus")
-            ->selectRaw("SUM(CASE WHEN kelulusan_sik.status = 'Belum Lulus' THEN 1 ELSE 0 END) as jumlah_belum_ditetapkan")
-            ->groupBy('periode.tahun')
-            ->orderByDesc('periode.tahun')
-            ->get();
 
-        $totalPeserta = (int) $kelulusanTahunan->sum('total_kelulusan');
-        $totalLulus = (int) $kelulusanTahunan->sum('jumlah_lulus');
-        $persentaseKelulusan = $totalPeserta > 0
-            ? round(($totalLulus / $totalPeserta) * 100, 2)
-            : 0;
+public function laporan(): View
+{
+    // Rekap kelulusan per tahun
+    $kelulusanTahunan = KelulusanSik::query()
+        ->join(
+            'anggota_periode_sik as anggota',
+            'anggota.id',
+            '=',
+            'kelulusan_sik.anggota_periode_sik_id'
+        )
+        ->join(
+            'periode_sik as periode',
+            'periode.id',
+            '=',
+            'anggota.periode_sik_id'
+        )
+        ->select('periode.tahun')
+        ->selectRaw('COUNT(*) as total_kelulusan')
+        ->selectRaw("SUM(CASE WHEN kelulusan_sik.status = 'Lulus' THEN 1 ELSE 0 END) as jumlah_lulus")
+        ->selectRaw("SUM(CASE WHEN kelulusan_sik.status = 'Tidak Lulus' THEN 1 ELSE 0 END) as jumlah_tidak_lulus")
+        ->selectRaw("SUM(CASE WHEN kelulusan_sik.status = 'Belum Lulus' THEN 1 ELSE 0 END) as jumlah_belum_ditetapkan")
+        ->groupBy('periode.tahun')
+        ->orderByDesc('periode.tahun')
+        ->get();
 
-        return view('laporan-sik.index', compact(
-            'kelulusanTahunan',
-            'totalPeserta',
-            'totalLulus',
-            'persentaseKelulusan'
-        ));
-    }
+    // Detail evaluasi kelulusan setiap santri
+    $detailKelulusan = KelulusanSik::with([
+        'anggotaPeriodeSik.santri',
+        'anggotaPeriodeSik.periode',
+        'anggotaPeriodeSik.kelompok',
+        'anggotaPeriodeSik.absensi',
+    ])
+        ->latest()
+        ->get();
+
+    // Syarat minimal kehadiran dari konfigurasi SIK
+    $minimumHadir = (int) config('sik.attendance.minimum_present');
+
+    $totalPeserta = (int) $kelulusanTahunan->sum('total_kelulusan');
+    $totalLulus = (int) $kelulusanTahunan->sum('jumlah_lulus');
+
+    $persentaseKelulusan = $totalPeserta > 0
+        ? round(($totalLulus / $totalPeserta) * 100, 2)
+        : 0;
+
+    return view('laporan-sik.index', compact(
+        'kelulusanTahunan',
+        'detailKelulusan',
+        'minimumHadir',
+        'totalPeserta',
+        'totalLulus',
+        'persentaseKelulusan'
+    ));
+}
+
 }

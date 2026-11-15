@@ -68,7 +68,9 @@
                             </td>
                             <td class="text-center">{{ $record->jumlah_tidak_hadir_aktual }}</td>
                             <td class="text-center text-nowrap">{{ $graduationMinimumPresent }} kali</td>
-                            <td class="small">{{ $record->alasan_ketidaklulusan }}</td>
+                            <td class="small sd-kalab-reason-cell">
+                                {{ $record->alasan_ketidaklulusan }}
+                            </td>
                         </tr>
                     @empty
                         <tr><td colspan="6" class="text-center text-muted py-4">Belum ada santri berstatus Tidak Lulus.</td></tr>

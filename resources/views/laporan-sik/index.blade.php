@@ -2,7 +2,7 @@
 
 @section('content')
 <div class="container-fluid py-4 px-4">
-    <div class="card border-0 shadow-sm mb-4" style="background:linear-gradient(135deg,#12304a,#245778);border-radius:16px">
+    <div class="card border-0 shadow-sm mb-4" style="background:linear-gradient(135deg, #800000, #5b0000);border-radius:16px">
         <div class="card-body p-4 text-white">
         <h1 class="h3 fw-bold mb-2">Evaluasi Mutu Kelulusan</h1>
         <p class="mb-0 text-white-50">Perbandingan capaian kelulusan santri berdasarkan tahun periode SIK.</p>
@@ -43,13 +43,17 @@
                 @endphp
                 <div class="mb-3">
                     <div class="d-flex justify-content-between small mb-1"><strong>{{ $tahun->tahun }}</strong><span class="text-muted">{{ $tahun->total_kelulusan }} peserta</span></div>
-                    <div class="progress" style="height:14px" role="img" aria-label="{{ $tahun->tahun }}: {{ $tahun->jumlah_lulus }} lulus, {{ $tahun->jumlah_tidak_lulus }} tidak lulus, {{ $tahun->jumlah_belum_ditetapkan }} belum ditetapkan">
-                        <div class="progress-bar bg-success" style="width:{{ $lulusWidth }}%"></div>
-                        <div class="progress-bar bg-danger" style="width:{{ $tidakLulusWidth }}%"></div>
-                        <div class="progress-bar bg-secondary" style="width:{{ $belumWidth }}%"></div>
+                    <div class="progress" style="height:14px" role="img"
+                        aria-label="{{ $tahun->tahun }}: {{ $tahun->jumlah_lulus }} lulus">
+                        <div class="progress-bar bg-success"
+                            style="width: {{ $lulusWidth }}%"></div>
+
+                        <div class="progress-bar bg-danger"
+                            style="width: {{ $tidakLulusWidth }}%"></div>
+
+                        <div class="progress-bar bg-secondary"
+                            style="width: {{ $belumWidth }}%"></div>
                     </div>
-                    <div class="d-flex flex-wrap gap-3 small mt-1 text-muted"><span>Lulus {{ $tahun->jumlah_lulus }}</span><span>Tidak lulus {{ $tahun->jumlah_tidak_lulus }}</span><span>Belum ditetapkan {{ $tahun->jumlah_belum_ditetapkan }}</span></div>
-                </div>
             @empty
                 <p class="text-muted mb-0">Grafik akan tampil setelah data evaluasi kelulusan tersedia.</p>
             @endforelse
@@ -79,6 +83,86 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-4" id="detail-evaluasi-kelulusan">
+    <div class="card-body p-4">
+        <h2 class="h5 fw-bold mb-1">Detail Evaluasi Kelulusan Santri</h2>
+        <p class="text-muted mb-3">
+            Rincian status kelulusan, kehadiran, dan alasan evaluasi setiap santri.
+        </p>
+
+        <div class="table-responsive">
+            <table class="table table-hover table-bordered align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>No</th>
+                        <th>Nama Santri</th>
+                        <th>Nomor Induk</th>
+                        <th>Periode</th>
+                        <th>Kelompok</th>
+                        <th>Jumlah Hadir</th>
+                        <th>Minimal Hadir</th>
+                        <th>Status Kelulusan</th>
+                        <th>Alasan Evaluasi</th>
+                        <th>Keterangan</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @forelse ($detailKelulusan as $index => $detail)
+                        @php
+                            $anggota = $detail->anggotaPeriodeSik;
+                            $santri = $anggota?->santri;
+
+                            $jumlahHadir = $anggota
+                                ? $anggota->absensi->where('status', 'Hadir')->count()
+                                : 0;
+
+                            $status = $detail->status;
+
+                            if ($jumlahHadir < $minimumHadir) {
+                                $alasan = "Kehadiran belum memenuhi syarat minimal {$minimumHadir} kali. Kehadiran saat ini {$jumlahHadir} kali.";
+                            } elseif ($status === 'Tidak Lulus') {
+                                $alasan = $detail->keterangan ?: 'Status kelulusan ditetapkan Tidak Lulus oleh pengelola.';
+                            } elseif ($status === 'Lulus') {
+                                $alasan = 'Memenuhi syarat kehadiran dan dinyatakan Lulus.';
+                            } else {
+                                $alasan = 'Status kelulusan belum ditetapkan.';
+                            }
+                        @endphp
+
+                        <tr>
+                            <td>{{ $index + 1 }}</td>
+                            <td>{{ $santri?->nama ?? '-' }}</td>
+                            <td>{{ $santri?->nomor_induk ?? '-' }}</td>
+                            <td>{{ $anggota?->periode?->tahun ?? '-' }}</td>
+                            <td>{{ $anggota?->kelompok?->nama ?? '-' }}</td>
+                            <td class="text-center">{{ $jumlahHadir }}</td>
+                            <td class="text-center">{{ $minimumHadir }}</td>
+                            <td>
+                                @if ($status === 'Lulus')
+                                    <span class="badge bg-success">Lulus</span>
+                                @elseif ($status === 'Tidak Lulus')
+                                    <span class="badge bg-danger">Tidak Lulus</span>
+                                @else
+                                    <span class="badge bg-secondary">{{ $status }}</span>
+                                @endif
+                            </td>
+                            <td>{{ $alasan }}</td>
+                            <td>{{ $detail->keterangan ?: '-' }}</td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="10" class="text-center text-muted py-4">
+                                Belum ada data evaluasi kelulusan santri.
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
         </div>
     </div>
 </div>

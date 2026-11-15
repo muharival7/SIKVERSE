@@ -731,6 +731,26 @@
     font-size: .72rem;
 }
 
+/* Detail alasan evaluasi Ka-Lab Mutu */
+.sd-kalab-failures .table th {
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.sd-kalab-failures .table td {
+    vertical-align: top;
+    padding: .85rem .75rem;
+}
+
+.sd-kalab-failures .sd-kalab-reason-cell {
+    min-width: 280px;
+    max-width: 420px;
+    white-space: normal;
+    line-height: 1.7;
+    color: var(--sd-text);
+    overflow-wrap: anywhere;
+}
+
 .sd-dashboard-footer {
     display: flex;
     justify-content: center;
