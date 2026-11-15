@@ -85,8 +85,13 @@
                             <td>{{ $membership?->kelompok?->nama_kelompok ?? 'Belum terdaftar' }}</td>
                             <td>{{ $membership?->periode?->nama_periode ?? '—' }}</td>
                             <td><span class="badge {{ $santri->status === 'Aktif' ? 'bg-success' : 'bg-secondary' }}">{{ $santri->status }}</span></td>
-                            <td class="text-end text-nowrap"><a class="btn btn-sm btn-outline-primary" href="{{ route('santris.show', $santri) }}">Detail</a> <a class="btn btn-sm btn-outline-warning" href="{{ route('santris.edit', $santri) }}">Edit</a></td>
-                        </tr>
+                            <td class="text-end text-nowrap">
+                                <a class="btn btn-sm btn-outline-primary"
+                                href="{{ route('santris.show', $santri) }}">Detail</a>
+
+                                <a class="btn btn-sm btn-outline-warning"
+                                href="{{ route('santris.edit', $santri) }}">Edit</a>
+                            </td>
                     @empty
                         <tr><td colspan="8" class="text-center py-5"><div class="fw-semibold">Tidak ada data santri yang cocok</div><div class="text-muted">Ubah filter atau tambahkan santri baru.</div></td></tr>
                     @endforelse

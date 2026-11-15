@@ -9,13 +9,17 @@
     $mainNavItems = [];
     $secondaryNavItems = [];
 
-    if ($role === \App\Enums\UserRole::Admin) {
-        $mainNavItems = [
-            ['label' => 'Dashboard', 'route' => 'dashboard', 'matches' => ['dashboard*'], 'icon' => 'dashboard'],
-            ['label' => 'Data Santri', 'route' => 'santris.index', 'matches' => ['santris.*'], 'icon' => 'students'],
-            ['label' => 'Data Dosen', 'route' => 'users.index', 'matches' => ['users.*'], 'icon' => 'users'],
-            ['label' => 'Rekap Absensi', 'route' => 'rekap-kehadiran-sik.index', 'matches' => ['rekap-kehadiran-sik.*'], 'icon' => 'report'],
-        ];
+if ($role === \App\Enums\UserRole::Admin) {
+    $mainNavItems = [
+        ['label' => 'Dashboard', 'route' => 'dashboard', 'matches' => ['dashboard*'], 'icon' => 'dashboard'],
+        ['label' => 'Data Santri', 'route' => 'santris.index', 'matches' => ['santris.*'], 'icon' => 'students'],
+
+        // Menu baru
+        ['label' => 'Kelola Status Kelulusan', 'route' => 'kelulusan-sik.index', 'matches' => ['kelulusan-sik.*'], 'icon' => 'report'],
+
+        ['label' => 'Data Dosen', 'route' => 'users.index', 'matches' => ['users.*'], 'icon' => 'users'],
+        ['label' => 'Rekap Absensi', 'route' => 'rekap-kehadiran-sik.index', 'matches' => ['rekap-kehadiran-sik.*'], 'icon' => 'report'],
+    ];
     } elseif ($role === \App\Enums\UserRole::InfrastrukturSik) {
         $mainNavItems = [
             ['label' => 'Dashboard', 'route' => 'dashboard', 'matches' => ['dashboard*'], 'icon' => 'dashboard'],
