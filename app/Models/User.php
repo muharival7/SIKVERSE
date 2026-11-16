@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Notifications\Notifiable;
 use App\Notifications\VerifyEmailCodeNotification;
+use App\Notifications\CustomResetPassword;
 
 #[Fillable(['name', 'email', 'password', 'must_change_password'])]
 #[Hidden(['password', 'remember_token'])]
@@ -58,6 +59,11 @@ class User extends Authenticatable implements MustVerifyEmail
 
         Cache::put($this->verificationCodeCacheKey(), Hash::make($code), now()->addMinutes(10));
         $this->notify(new VerifyEmailCodeNotification($code));
+    }
+    
+    public function sendPasswordResetNotification($token): void
+    {
+    $this->notify(new CustomResetPassword($token));
     }
 
     public function verificationCodeCacheKey(): string
