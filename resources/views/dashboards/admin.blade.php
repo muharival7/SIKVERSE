@@ -79,14 +79,28 @@
 
         <section class="col-12 col-xl-5" aria-labelledby="admin-certificate-panel-title">
             <div class="sd-card h-100 admin-certificate-panel">
-                <div class="sd-section-kicker">PENGELOLAAN SERTIFIKAT</div>
-                <h2 id="admin-certificate-panel-title" class="mt-2">Sertifikat Kelulusan</h2>
-                <p class="sd-card-description">Kelola sertifikat santri yang sudah dinyatakan lulus dan memenuhi ambang kehadiran.</p>
-                <div class="admin-certificate-callout">
+                <div class="admin-certificate-heading">
                     <span class="sd-kpi-icon gold"><x-sik-icon name="certificate" /></span>
-                    <div><strong>{{ number_format($adminStats['mahasiswaLulus']) }} santri memenuhi syarat kelulusan</strong><small>Data kelulusan berasal dari hasil evaluasi dan kehadiran tersimpan.</small></div>
+                    <div>
+                        <span class="sd-section-kicker">PENGELOLAAN SERTIFIKAT</span>
+                        <h2 id="admin-certificate-panel-title" class="admin-certificate-title">Sertifikat Kelulusan</h2>
+                    </div>
                 </div>
-                <a class="sd-button sd-button-primary mt-3" href="{{ route('sertifikat-sik.index') }}">Buka Pengelolaan Sertifikat <x-sik-icon name="arrow-right" /></a>
+
+                <p class="admin-certificate-description">Kelola sertifikat santri yang sudah dinyatakan lulus dan memenuhi ambang kehadiran.</p>
+
+                <div class="admin-certificate-callout">
+                    <div class="admin-certificate-count">
+                        <strong class="admin-certificate-count-value">{{ number_format($adminStats['mahasiswaLulus']) }}</strong>
+                        <span class="admin-certificate-count-label">santri memenuhi syarat kelulusan</span>
+                    </div>
+                    <p class="admin-certificate-note">Data kelulusan berasal dari hasil evaluasi dan kehadiran tersimpan.</p>
+                </div>
+
+                <a class="sd-button sd-button-primary admin-certificate-action" href="{{ route('sertifikat-sik.index') }}">
+                    Buka Pengelolaan Sertifikat
+                    <x-sik-icon name="arrow-right" />
+                </a>
             </div>
         </section>
     </div>

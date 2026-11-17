@@ -9,7 +9,7 @@
 @endpush
 
 @section('content')
-<div class="container py-4 py-lg-5 sik-dashboard">
+<div class="container py-4 py-lg-5 sik-dashboard sd-santri-dashboard">
     @if (session('success'))
         <div class="alert alert-success" role="status">{{ session('success') }}</div>
     @endif
@@ -61,7 +61,7 @@
                                 @endif
                             </div>
                         </div>
-                        <span class="sd-ring-caption">Target {{ $minimumPresent }} dari {{ $meetingCount }} pertemuan</span>
+                        <span class="sd-ring-caption">Ambang {{ number_format($minimumPercentage, 1, ',', '.') }}% dari pertemuan Terlaksana</span>
                     </div>
 
                     <div class="sd-status-summary" aria-label="Rincian status absensi">
@@ -140,15 +140,19 @@
                                 <div class="sd-activity-row">
                                     <div class="sd-activity-copy">
                                         <strong>{{ $recap['nama_kegiatan'] }}</strong>
-                                        <span>{{ $recap['jumlah_hadir'] }} dari {{ $recap['total_pertemuan'] }} kali hadir</span>
+                                        <span>
+                                            {{ $recap['status'] === $noMeetingsStatus
+                                                ? $noMeetingsStatus
+                                                : $recap['jumlah_hadir'].' Hadir · '.$recap['jumlah_izin'].' Izin · '.$recap['jumlah_sakit'].' Sakit · '.$recap['jumlah_alpha'].' Alpha dari '.$recap['total_pertemuan'].' Terlaksana' }}
+                                        </span>
                                         <em class="sd-recap-state {{ $recap['memenuhi'] ? 'success' : '' }}">
-                                            {{ $recap['memenuhi'] ? 'Target tercapai' : 'Belum memenuhi target' }}
+                                            {{ $recap['persentase_display'] }}
                                         </em>
                                     </div>
-                                    <div class="sd-activity-progress" role="img" aria-label="{{ $recap['persentase'] }} persen kehadiran">
-                                        <span style="width: {{ $recap['persentase'] }}%"></span>
+                                    <div class="sd-activity-progress" role="img" aria-label="{{ $recap['persentase_display'] }} kehadiran">
+                                        <span style="width: {{ $recap['persentase'] ?? 0 }}%"></span>
                                     </div>
-                                    <strong class="sd-activity-percent">{{ number_format($recap['persentase'], 0) }}%</strong>
+                                    <strong class="sd-activity-percent">{{ $recap['persentase'] === null ? '—' : number_format($recap['persentase'], 0).'%' }}</strong>
                                 </div>
                             @endforeach
                         </div>
@@ -156,7 +160,7 @@
                 @endif
 
                 <div class="sd-card-footer">
-                    <span>Persentase dihitung dari {{ $meetingCount }} pertemuan per kegiatan.</span>
+                    <span>Persentase dihitung dari jumlah Hadir dibanding pertemuan Terlaksana per kegiatan.</span>
                 </div>
             </div>
         </section>

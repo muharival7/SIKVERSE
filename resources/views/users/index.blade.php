@@ -20,11 +20,6 @@
         </div>
 
         <div class="d-flex flex-wrap gap-2">
-            <a class="btn btn-outline-danger"
-               href="{{ route('rekap-absensi-dosen.index') }}">
-                Rekap Absensi Dosen
-            </a>
-
             <a class="btn btn-primary"
                href="{{ route('users.create') }}">
                 + Tambah Dosen
@@ -137,7 +132,7 @@
                         name="search"
                         value="{{ $filters['search'] ?? '' }}"
                         class="form-control"
-                        placeholder="Nama, NIP, email, atau program studi">
+                        placeholder="Nama, NIP, email, program studi, atau kelompok">
                 </div>
 
                 <div class="col-8 col-lg-3">
@@ -186,7 +181,7 @@
                         <th>No</th>
                         <th>Nama Dosen</th>
                         <th>NIP</th>
-                        <th>Program Studi</th>
+                        <th>Kelompok</th>
                         <th>Status</th>
                         <th>Rekap Kehadiran Dosen</th>
                         <th>Rekap Kelompok Santri</th>
@@ -221,9 +216,23 @@
                                 {{ $profile?->nip ?: '—' }}
                             </td>
 
-                            {{-- Program studi --}}
-                            <td>
-                                {{ $profile?->program_studi ?: '—' }}
+                            {{-- Kelompok yang diampu --}}
+                            <td style="min-width:180px">
+
+                                @forelse ($user->dosen_kelompok as $namaKelompok)
+
+                                    <span class="badge rounded-pill sik-kelompok-badge">
+                                        {{ $namaKelompok }}
+                                    </span>
+
+                                @empty
+
+                                    <span class="small text-muted">
+                                        Belum memiliki kelompok
+                                    </span>
+
+                                @endforelse
+
                             </td>
 
                             {{-- Status --}}
@@ -244,10 +253,7 @@
                                 @if ($absensiDosenAvailable && $profile)
 
                                     <div class="small">
-                                        {{ number_format($user->dosen_attendance_present) }}
-                                        dari
-                                        {{ number_format($user->dosen_attendance_count) }}
-                                        catatan hadir
+                                        {{ number_format($user->dosen_attendance_present) }} dari {{ number_format($user->dosen_attendance_count) }} catatan hadir
                                     </div>
 
                                     <div class="small text-muted">
@@ -256,9 +262,9 @@
                                             : 'Belum ada data' }}
                                     </div>
 
-                                    <a class="d-block small fw-semibold mt-1"
+                                    <a class="btn btn-sm btn-outline-danger mt-1"
                                        href="{{ route('rekap-absensi-dosen.show', $profile) }}">
-                                        Detail riwayat
+                                        Detail Riwayat
                                     </a>
 
                                 @else

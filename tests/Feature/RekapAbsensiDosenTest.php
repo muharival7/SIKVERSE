@@ -110,16 +110,18 @@ test('empty instructor recap shows zero counts and a clear no-data message', fun
         ->assertSee('0.0%');
 });
 
-test('the admin data-dosen page links to real attendance recaps and non-admin roles cannot access them', function () {
+test('the admin data-dosen page keeps attendance data without the header menu and exposes detail buttons', function () {
     $fixture = createDosenAttendanceFixture();
     createDosenAttendance($fixture['instructor'], $fixture['admin'], '2026-10-01', 'Hadir');
 
-    $this->actingAs($fixture['admin'])
+    $response = $this->actingAs($fixture['admin'])
         ->get(route('users.index'))
         ->assertOk()
         ->assertSee('Rekap Kehadiran Dosen')
         ->assertSee('1 dari 1 catatan hadir')
-        ->assertSee('Detail riwayat');
+        ->assertSee('Detail Riwayat');
+
+    expect($response->getContent())->not->toContain('href="'.route('rekap-absensi-dosen.index').'"');
 
     $this->actingAs($fixture['instructorUser'])
         ->get(route('rekap-absensi-dosen.index'))

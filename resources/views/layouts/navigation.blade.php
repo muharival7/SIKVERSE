@@ -1,6 +1,6 @@
 @php
     $user = Auth::user();
-    $role = $user?->role;
+    $role = $user?->resolvedRole();
     $usesSidebarLayout = in_array($role, [
         \App\Enums\UserRole::Admin,
         \App\Enums\UserRole::InfrastrukturSik,
@@ -19,6 +19,7 @@ if ($role === \App\Enums\UserRole::Admin) {
 
         ['label' => 'Data Dosen', 'route' => 'users.index', 'matches' => ['users.*'], 'icon' => 'users'],
         ['label' => 'Rekap Absensi', 'route' => 'rekap-kehadiran-sik.index', 'matches' => ['rekap-kehadiran-sik.*'], 'icon' => 'report'],
+        ['label' => 'Rabu Mengaji', 'route' => 'rabu-mengaji.index', 'matches' => ['rabu-mengaji.*'], 'icon' => 'attendance'],
     ];
     } elseif ($role === \App\Enums\UserRole::InfrastrukturSik) {
         $mainNavItems = [
@@ -27,6 +28,7 @@ if ($role === \App\Enums\UserRole::Admin) {
             ['label' => 'Absen', 'route' => 'absensi-sik.index', 'matches' => ['absensi-sik.*'], 'icon' => 'attendance'],
             ['label' => 'Nilai', 'route' => 'nilai.index', 'matches' => ['nilai.*'], 'icon' => 'book'],
             ['label' => 'Rekap Absen', 'route' => 'rekap-kehadiran-sik.index', 'matches' => ['rekap-kehadiran-sik.*'], 'icon' => 'report'],
+            ['label' => 'Rabu Mengaji', 'route' => 'rabu-mengaji.index', 'matches' => ['rabu-mengaji.*'], 'icon' => 'attendance'],
         ];
 
         $secondaryNavItems = [
@@ -95,15 +97,6 @@ if ($role === \App\Enums\UserRole::Admin) {
             @endif
         </nav>
 
-        <div class="sik-sidebar-bottom">
-            <form method="POST" action="{{ route('logout') }}">
-                @csrf
-                <button class="sik-sidebar-logout" type="submit">
-                    <x-sik-icon name="logout" class="sik-sidebar-icon" />
-                    <span>Keluar</span>
-                </button>
-            </form>
-        </div>
     </aside>
 
     @push('scripts')

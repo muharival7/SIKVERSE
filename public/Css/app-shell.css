@@ -321,34 +321,6 @@ body {
     font-size: .78rem;
 }
 
-.sik-sidebar-bottom {
-    flex: 0 0 auto;
-    padding-top: .8rem;
-    border-top: 1px solid rgba(255, 255, 255, .19);
-}
-
-.sik-sidebar-logout {
-    display: flex;
-    align-items: center;
-    gap: .8rem;
-    width: 100%;
-    min-height: 42px;
-    padding: .65rem .75rem;
-    border: 1px solid rgba(255, 255, 255, .24);
-    border-radius: 11px;
-    background: rgba(37, 5, 8, .18);
-    color: #fff;
-    font-size: .84rem;
-    font-weight: 700;
-    text-align: left;
-    transition: background .18s ease, border-color .18s ease;
-}
-
-.sik-sidebar-logout:hover {
-    border-color: rgba(255, 255, 255, .5);
-    background: rgba(255, 255, 255, .13);
-}
-
 .sik-app-main--sidebar {
     min-height: 100vh;
     margin-left: 254px;
@@ -529,7 +501,6 @@ main.sik-app-main--sidebar {
 @media (prefers-reduced-motion: reduce) {
     .sik-user-chip,
     .sik-sidebar-link,
-    .sik-sidebar-logout,
     .sik-sidebar,
     .sik-sidebar-backdrop,
     .sik-accordion-chevron {
@@ -797,4 +768,191 @@ main {
 .page-title {
     color: #0f172a;
     font-weight: 700;
+}
+
+.sik-kelompok-badge {
+    display: inline-block;
+    margin: .1rem .25rem .1rem 0;
+    padding: .42rem .7rem;
+    border: 1px solid #e7c9cb;
+    border-radius: 999px;
+    background: #fdf6f6;
+    color: var(--sik-maroon);
+    font-size: .75rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+/* Floating logout control: stays visible at the bottom-left of the viewport. */
+.sik-fixed-logout {
+    position: fixed;
+    z-index: 1060;
+    bottom: clamp(1rem, 2.2vw, 1.75rem);
+    left: clamp(1rem, 2.2vw, 1.75rem);
+}
+
+.sik-fixed-logout form {
+    margin: 0;
+}
+
+.sik-fixed-logout .sd-app-logout {
+    min-width: 128px;
+    box-shadow: 0 10px 24px rgba(90, 12, 17, .22);
+}
+
+.sik-has-fixed-logout main {
+    padding-bottom: 6rem;
+}
+
+.sik-app-frame--sidebar .sik-sidebar {
+    padding-bottom: 6.75rem;
+}
+
+/* Sertifikat management pages. */
+.sertifikat-page {
+    --sertifikat-border: #ece3e3;
+    --sertifikat-muted: #7b7273;
+}
+
+.sertifikat-eyebrow {
+    display: inline-block;
+    color: var(--sik-maroon);
+    font-size: .7rem;
+    font-weight: 800;
+    letter-spacing: .13em;
+}
+
+.sertifikat-page-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem 1.5rem;
+    margin-bottom: 1.5rem;
+    padding: 1.5rem 1.6rem;
+    border: 1px solid rgba(118, 13, 18, .1);
+    border-radius: 18px;
+    background: linear-gradient(118deg, #f7e2e2 0%, #fff9f7 68%, #fff 100%);
+}
+
+.sertifikat-page-header .page-title {
+    margin: .35rem 0 .4rem;
+    color: var(--sik-maroon);
+    font-size: clamp(1.4rem, 2.2vw, 1.85rem);
+    letter-spacing: -.025em;
+}
+
+.sertifikat-page-header p {
+    max-width: 620px;
+    margin: 0;
+    color: var(--sertifikat-muted);
+    font-size: .9rem;
+    line-height: 1.6;
+}
+
+.sertifikat-page-header .btn-primary {
+    min-height: 44px;
+    padding-inline: 1.15rem;
+    box-shadow: 0 8px 18px rgba(118, 13, 18, .16);
+}
+
+.sertifikat-page .alert {
+    margin-bottom: 1rem;
+    border-radius: 12px;
+}
+
+.sertifikat-table-card,
+.sertifikat-form-shell {
+    overflow: hidden;
+    border: 1px solid var(--sertifikat-border);
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 10px 26px rgba(56, 29, 31, .06);
+}
+
+.sertifikat-table-card .table thead th {
+    padding: .9rem 1rem;
+    border-color: #8d3539;
+    font-size: .72rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.sertifikat-table-card .table td {
+    padding: .95rem 1rem;
+    color: #4f4849;
+}
+
+.sertifikat-table-card .table td strong {
+    color: var(--sik-ink);
+}
+
+.sertifikat-table-card .d-flex {
+    gap: .45rem;
+}
+
+.sertifikat-empty {
+    padding: 2.5rem 1rem !important;
+    color: var(--sertifikat-muted) !important;
+    text-align: center;
+}
+
+.sertifikat-form-shell {
+    padding: clamp(1.25rem, 2.4vw, 2rem);
+}
+
+.sertifikat-form-shell .form-label {
+    margin-bottom: .45rem;
+    color: #51494a;
+    font-size: .82rem;
+    font-weight: 750;
+}
+
+.sertifikat-form-shell .form-control,
+.sertifikat-form-shell .form-select {
+    min-height: 43px;
+    border-color: #ded4d5;
+    border-radius: 10px;
+    font-size: .88rem;
+}
+
+.sertifikat-form-shell .form-text {
+    margin-top: .4rem;
+    color: var(--sertifikat-muted);
+    font-size: .76rem;
+}
+
+.sertifikat-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .65rem;
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid #f0e8e8;
+}
+
+@media (max-width: 575.98px) {
+    .sik-fixed-logout {
+        bottom: .75rem;
+        left: .75rem;
+    }
+
+    .sik-fixed-logout .sd-app-logout {
+        min-width: 112px;
+        padding: .5rem .85rem;
+        font-size: .8rem;
+    }
+
+    .sertifikat-page-header {
+        align-items: flex-start;
+        padding: 1.2rem;
+    }
+
+    .sertifikat-page-header .btn-primary {
+        width: 100%;
+    }
+
+    .sertifikat-form-actions .btn {
+        flex: 1 1 auto;
+    }
 }

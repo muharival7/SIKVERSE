@@ -39,7 +39,8 @@ class UserManagementController extends Controller
                     ->orWhere('email', 'like', "%{$search}%")
                     ->orWhereHas('infrastrukturSik', function ($profileQuery) use ($search): void {
                         $profileQuery->where('nip', 'like', "%{$search}%")
-                            ->orWhere('program_studi', 'like', "%{$search}%");
+                            ->orWhere('program_studi', 'like', "%{$search}%")
+                            ->orWhereHas('kelompok', fn ($groupQuery) => $groupQuery->where('nama_kelompok', 'like', "%{$search}%"));
                     });
             });
         }
@@ -52,6 +53,13 @@ class UserManagementController extends Controller
             ->paginate(15)
             ->withQueryString()
             ->through(function (User $user): User {
+                $kelompokNames = $user->infrastrukturSik?->kelompok
+                    ->pluck('nama_kelompok')
+                    ->filter()
+                    ->sort()
+                    ->values()
+                    ->all() ?? [];
+
                 $recaps = $user->infrastrukturSik?->kelompok
                     ->flatMap(fn ($group) => $group->anggota->flatMap->rekapKehadiran)
                     ?? collect();
@@ -60,6 +68,7 @@ class UserManagementController extends Controller
                     ? round((float) $recaps->avg('jumlah_hadir'))
                     : null;
 
+                $user->setAttribute('dosen_kelompok', $kelompokNames);
                 $user->setAttribute('recap_count', $recaps->count());
                 $user->setAttribute('average_present', $averagePresent);
                 $user->setAttribute('recap_meeting_count', $totalMeetings);

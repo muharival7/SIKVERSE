@@ -12,6 +12,7 @@ use App\Models\PeriodeSik;
 use App\Models\RekapKehadiranSik;
 use App\Models\Santri;
 use App\Models\User;
+use App\Services\AttendanceRecapService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -19,12 +20,16 @@ use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
+    public function __construct(private readonly AttendanceRecapService $attendanceRecapService)
+    {
+    }
+
     public function __invoke(Request $request): View
     {
         $user = $request->user();
-        $role = $user?->role;
+        $role = $user instanceof User ? $user->resolvedRole() : null;
 
-        abort_unless($role instanceof UserRole, 403);
+        abort_unless($role instanceof UserRole, 403, 'Peran pengguna tidak dikenali. Hubungi administrator.');
 
         $view = match ($role) {
             UserRole::Admin => 'dashboards.admin',
@@ -80,8 +85,6 @@ class DashboardController extends Controller
             }
         }
 
-        $meetingCount = max(1, (int) config('sik.attendance.meeting_count', 16));
-        $minimumPresent = max(1, (int) config('sik.attendance.minimum_present', 14));
         $attendanceRecords = $keanggotaan instanceof AnggotaPeriodeSik
             ? $keanggotaan->absensi()->with('pertemuan.kegiatan')->get()
             : collect();
@@ -89,35 +92,37 @@ class DashboardController extends Controller
             ? $keanggotaan->rekapKehadiran()->with('kegiatan')->latest()->get()
             : collect();
 
+        $this->attendanceRecapService->prepareDisplay($recapRecords);
+        $terlaksanaRecords = $attendanceRecords->filter(
+            fn (AbsensiSik $attendance): bool => $attendance->pertemuan?->status === 'Terlaksana'
+        );
+
         $statusCounts = [
-            'Hadir' => $attendanceRecords->where('status', 'Hadir')->count(),
-            'Izin' => $attendanceRecords->where('status', 'Izin')->count(),
-            'Sakit' => $attendanceRecords->where('status', 'Sakit')->count(),
-            'Alpha' => $attendanceRecords->where('status', 'Alpha')->count(),
-            'Tidak Lengkap' => $attendanceRecords->where('status', 'Tidak Lengkap')->count(),
+            'Hadir' => $terlaksanaRecords->where('status', 'Hadir')->count(),
+            'Izin' => $terlaksanaRecords->where('status', 'Izin')->count(),
+            'Sakit' => $terlaksanaRecords->where('status', 'Sakit')->count(),
+            'Alpha' => $terlaksanaRecords->where('status', 'Alpha')->count(),
+            'Tidak Lengkap' => $terlaksanaRecords->where('status', 'Tidak Lengkap')->count(),
         ];
 
-        $activityRecaps = $recapRecords->map(function (RekapKehadiranSik $recap) use (
-            $meetingCount,
-            $minimumPresent
-        ): array {
-            $jumlahHadir = min((int) $recap->jumlah_hadir, $meetingCount);
-
+        $activityRecaps = $recapRecords->map(function (RekapKehadiranSik $recap): array {
             return [
                 'nama_kegiatan' => $recap->kegiatan?->nama_kegiatan ?? 'Kegiatan SIK',
-                'jumlah_hadir' => $jumlahHadir,
-                'total_pertemuan' => $meetingCount,
-                'persentase' => round(($jumlahHadir / $meetingCount) * 100, 1),
-                'memenuhi' => (int) $recap->jumlah_hadir >= $minimumPresent,
+                'total_pertemuan' => (int) $recap->total_pertemuan,
+                'jumlah_hadir' => (int) $recap->jumlah_hadir,
+                'jumlah_izin' => (int) $recap->jumlah_izin,
+                'jumlah_sakit' => (int) $recap->jumlah_sakit,
+                'jumlah_alpha' => (int) $recap->jumlah_alpha,
+                'persentase' => $recap->tersedia ? (float) $recap->persentase_kehadiran : null,
+                'persentase_display' => (string) $recap->persentase_display,
+                'status' => (string) $recap->status_kehadiran,
+                'memenuhi' => (bool) $recap->memenuhi,
             ];
         })->values();
 
-        $totalPossibleMeetings = $meetingCount * $activityRecaps->count();
-        $attendancePercentage = $totalPossibleMeetings > 0
-            ? round((min($statusCounts['Hadir'], $totalPossibleMeetings) / $totalPossibleMeetings) * 100, 1)
-            : null;
+        $attendancePercentage = $this->attendanceRecapService->averagePercentage($recapRecords);
 
-        $orderedAttendance = $attendanceRecords->sortBy(function (AbsensiSik $attendance): string {
+        $orderedAttendance = $terlaksanaRecords->sortBy(function (AbsensiSik $attendance): string {
             return $attendance->pertemuan?->tanggal?->format('Y-m-d')
                 ?? $attendance->created_at?->format('Y-m-d')
                 ?? '';
@@ -133,11 +138,11 @@ class DashboardController extends Controller
             'activityRecaps' => $activityRecaps,
             'attendanceCounts' => $statusCounts,
             'attendancePercentage' => $attendancePercentage,
-            'attendanceRecordCount' => $attendanceRecords->count(),
+            'attendanceRecordCount' => $terlaksanaRecords->count(),
             'recentAttendance' => $recentAttendance,
             'attendanceTrend' => $attendanceTrend,
-            'meetingCount' => $meetingCount,
-            'minimumPresent' => $minimumPresent,
+            'minimumPercentage' => $this->attendanceRecapService->minimumPercentage(),
+            'noMeetingsStatus' => AttendanceRecapService::STATUS_NO_MEETINGS,
             'kelulusan' => $kelulusan,
             'sertifikat' => $kelulusan?->sertifikat,
         ];
@@ -165,22 +170,10 @@ class DashboardController extends Controller
         }
 
         $recaps = $recapQuery->get();
-        $meetingCount = max(1, (int) config('sik.attendance.meeting_count', 16));
-        $minimumPresent = max(1, (int) config('sik.attendance.minimum_present', 14));
-        $possibleAttendance = $recaps->count() * $meetingCount;
-        $presentAttendance = (int) $recaps->sum(
-            fn (RekapKehadiranSik $recap): int => min((int) $recap->jumlah_hadir, $meetingCount)
-        );
-
-        $recaps->each(function (RekapKehadiranSik $item) use ($meetingCount, $minimumPresent): void {
-            $jumlahHadir = min((int) $item->jumlah_hadir, $meetingCount);
-            $item->setAttribute('total_pertemuan', $meetingCount);
-            $item->setAttribute('persentase_kehadiran', round(($jumlahHadir / $meetingCount) * 100, 2));
-            $item->setAttribute(
-                'status_kehadiran',
-                (int) $item->jumlah_hadir >= $minimumPresent ? 'Memenuhi' : 'Belum Memenuhi'
-            );
-        });
+        $this->attendanceRecapService->prepareDisplay($recaps);
+        $recapsTersedia = $recaps->filter(fn (RekapKehadiranSik $recap): bool => (bool) $recap->tersedia);
+        $possibleAttendance = (int) $recapsTersedia->sum(fn (RekapKehadiranSik $recap): int => (int) $recap->total_pertemuan);
+        $presentAttendance = (int) $recapsTersedia->sum(fn (RekapKehadiranSik $recap): int => (int) $recap->jumlah_hadir);
 
         $participantsQuery = AnggotaPeriodeSik::query()->where('status', 'Aktif');
 
@@ -192,7 +185,7 @@ class DashboardController extends Controller
         $attendanceQuery = AbsensiSik::query()
             ->with(['anggotaPeriode.santri', 'anggotaPeriode.kelompok', 'pertemuan.kegiatan'])
             ->whereHas('pertemuan', function ($query) use ($activePeriod, $trendStart): void {
-                $query->where('status', '!=', 'Dibatalkan')
+                $query->where('status', 'Terlaksana')
                     ->where('tanggal', '>=', $trendStart);
 
                 if ($activePeriod instanceof PeriodeSik) {
@@ -233,9 +226,9 @@ class DashboardController extends Controller
                         }
                     })
                     ->count(),
-                'rataKehadiran' => $recaps->isNotEmpty() ? round((float) $recaps->avg('persentase_kehadiran'), 1) : null,
+                'rataKehadiran' => $this->attendanceRecapService->averagePercentage($recapsTersedia),
                 'totalRekap' => $recaps->count(),
-                'memenuhiTarget' => $recaps->where('status_kehadiran', 'Memenuhi')->count(),
+                'memenuhiTarget' => $recaps->where('status_kehadiran', AttendanceRecapService::STATUS_MET)->count(),
             ],
             'adminRecentAttendance' => $orderedAttendance->reverse()->take(6)->values(),
             'adminRecentSantris' => Santri::query()
@@ -280,9 +273,6 @@ class DashboardController extends Controller
         $participantsQuery = AnggotaPeriodeSik::query()
             ->whereIn('kelompok_id', $groupIds)
             ->where('status', 'Aktif');
-        $meetingCount = max(1, (int) config('sik.attendance.meeting_count', 16));
-        $minimumPresent = max(1, (int) config('sik.attendance.minimum_present', 14));
-
         $recaps = RekapKehadiranSik::query()
             ->with(['anggotaPeriode.santri', 'anggotaPeriode.kelompok', 'kegiatan'])
             ->whereHas(
@@ -291,15 +281,8 @@ class DashboardController extends Controller
             )
             ->latest()
             ->get();
-
-        $recaps->each(function (RekapKehadiranSik $item) use ($meetingCount, $minimumPresent): void {
-            $jumlahHadir = min((int) $item->jumlah_hadir, $meetingCount);
-            $item->setAttribute('persentase_kehadiran', round(($jumlahHadir / $meetingCount) * 100, 2));
-            $item->setAttribute(
-                'status_kehadiran',
-                (int) $item->jumlah_hadir >= $minimumPresent ? 'Memenuhi' : 'Belum Memenuhi'
-            );
-        });
+        $this->attendanceRecapService->prepareDisplay($recaps);
+        $recapsTersedia = $recaps->filter(fn (RekapKehadiranSik $recap): bool => (bool) $recap->tersedia);
 
         $trendStart = Carbon::now()->subMonths(5)->startOfMonth()->toDateString();
         $attendanceQuery = AbsensiSik::query()
@@ -316,7 +299,9 @@ class DashboardController extends Controller
                         );
                 });
             })
-            ->whereHas('pertemuan', fn ($query) => $query->where('tanggal', '>=', $trendStart));
+            ->whereHas('pertemuan', fn ($query) => $query
+                ->where('status', 'Terlaksana')
+                ->where('tanggal', '>=', $trendStart));
 
         $orderedAttendance = $attendanceQuery->get()
             ->sortBy(function (AbsensiSik $attendance): string {
@@ -330,7 +315,7 @@ class DashboardController extends Controller
             'infrastrukturStats' => [
                 'totalKelompok' => $groupIds->count(),
                 'pesertaAktif' => $participantsQuery->distinct('santri_id')->count('santri_id'),
-                'rataKehadiran' => $recaps->isNotEmpty() ? round((float) $recaps->avg('persentase_kehadiran'), 1) : null,
+                'rataKehadiran' => $this->attendanceRecapService->averagePercentage($recapsTersedia),
                 'totalRekap' => $recaps->count(),
             ],
             'infrastrukturAttendanceTrend' => $this->attendanceTrend($orderedAttendance),
@@ -343,9 +328,6 @@ class DashboardController extends Controller
      */
     private function kaLabDashboardData(): array
     {
-        $meetingCount = max(1, (int) config('sik.attendance.meeting_count', 16));
-        $minimumPresent = max(1, (int) config('sik.attendance.minimum_present', 14));
-
         $annualGraduation = KelulusanSik::query()
             ->join('anggota_periode_sik as anggota', 'anggota.id', '=', 'kelulusan_sik.anggota_periode_sik_id')
             ->join('periode_sik as periode', 'periode.id', '=', 'anggota.periode_sik_id')
@@ -364,40 +346,6 @@ class DashboardController extends Controller
             ])
             ->values();
 
-        $graduationFailures = KelulusanSik::query()
-            ->with([
-                'anggotaPeriodeSik.santri',
-                'anggotaPeriodeSik.periode',
-                'anggotaPeriodeSik.absensi',
-            ])
-            ->where('status', 'Tidak Lulus')
-            ->latest('updated_at')
-            ->take(10)
-            ->get()
-            ->map(function (KelulusanSik $record) use ($meetingCount, $minimumPresent): KelulusanSik {
-                $attendances = $record->anggotaPeriodeSik?->absensi ?? collect();
-                $present = min($attendances->where('status', 'Hadir')->count(), $meetingCount);
-                $percentage = round(($present / $meetingCount) * 100, 1);
-                $reasons = [];
-
-                if ($present < $minimumPresent) {
-                    $reasons[] = "Kehadiran {$present}/{$meetingCount} ({$percentage}%), kurang ".($minimumPresent - $present)." kali dari batas minimal {$minimumPresent}.";
-                }
-
-                if (filled($record->keterangan)) {
-                    $reasons[] = 'Catatan evaluasi: '.$record->keterangan;
-                } elseif ($present >= $minimumPresent) {
-                    $reasons[] = 'Ambang kehadiran terpenuhi; alasan lain belum dicatat pada evaluasi.';
-                }
-
-                $record->setAttribute('jumlah_hadir_aktual', $present);
-                $record->setAttribute('jumlah_tidak_hadir_aktual', max(0, $meetingCount - $present));
-                $record->setAttribute('persentase_kehadiran_aktual', $percentage);
-                $record->setAttribute('alasan_ketidaklulusan', implode(' ', $reasons));
-
-                return $record;
-            });
-
         $currentYear = (int) now()->year;
         $currentYearSummary = $annualGraduation->firstWhere('tahun', $currentYear) ?? [
             'tahun' => $currentYear,
@@ -410,9 +358,6 @@ class DashboardController extends Controller
             'graduationCurrentYear' => $currentYear,
             'graduationCurrentSummary' => $currentYearSummary,
             'graduationChartData' => $annualGraduation->slice(-5)->values(),
-            'graduationFailures' => $graduationFailures,
-            'graduationMeetingCount' => $meetingCount,
-            'graduationMinimumPresent' => $minimumPresent,
         ];
     }
 

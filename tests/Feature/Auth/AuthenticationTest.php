@@ -129,11 +129,76 @@ test('unverified synthetic accounts remain unverified when local email verificat
     expect($user->hasVerifiedEmail())->toBeFalse();
 });
 
-test('users can logout', function () {
+test('users can logout and are returned to the login page', function () {
     $user = User::factory()->create();
 
     $response = $this->actingAs($user)->post('/logout');
 
     $this->assertGuest();
-    $response->assertRedirect('/');
+    $response->assertRedirect(route('login', absolute: false));
 });
+
+test('guests are redirected to login when opening a protected dashboard', function () {
+    $this->get(route('dashboard'))
+        ->assertRedirect(route('login', absolute: false));
+
+    $this->get(route('dashboard.admin'))
+        ->assertRedirect(route('login', absolute: false));
+});
+
+test('a logged out user cannot reopen a protected page by revisiting its URL', function () {
+    $user = User::factory()->create(['role' => UserRole::Admin]);
+
+    $this->actingAs($user)->get(route('dashboard.admin'))->assertOk();
+
+    $this->post('/logout')->assertRedirect(route('login', absolute: false));
+
+    $this->get(route('dashboard.admin'))
+        ->assertRedirect(route('login', absolute: false));
+    $this->assertGuest();
+});
+
+test('authenticated pages are sent with cache headers that prevent browser back navigation', function () {
+    $user = User::factory()->create(['role' => UserRole::Admin]);
+
+    $response = $this->actingAs($user)->get(route('dashboard.admin'));
+
+    $response->assertOk();
+    expect($response->headers->get('Cache-Control'))->toContain('no-store');
+});
+
+test('every role dashboard has one fixed logout control that ends the session', function (UserRole $role, string $dashboardRoute) {
+    $user = User::factory()->create(['role' => $role]);
+
+    if ($role === UserRole::Santri) {
+        Santri::query()->create([
+            'user_id' => $user->id,
+            'nomor_induk' => 'SIK-LOGOUT-'.fake()->unique()->randomNumber(5),
+            'nama' => $user->name,
+            'jenis_kelamin' => 'Laki-laki',
+            'status' => 'Aktif',
+        ]);
+    }
+
+    $response = $this->actingAs($user)
+        ->get(route($dashboardRoute))
+        ->assertOk()
+        ->assertSee('sik-fixed-logout', false)
+        ->assertSee('action="'.route('logout').'"', false)
+        ->assertSee('method="POST"', false)
+        ->assertSee('name="_token"', false)
+        ->assertSee('<span>Keluar</span>', false);
+
+    expect(substr_count($response->getContent(), 'action="'.route('logout').'"'))->toBe(1)
+        ->and(substr_count($response->getContent(), '<span>Keluar</span>'))->toBe(1);
+
+    $this->post(route('logout'))
+        ->assertRedirect(route('login', absolute: false));
+
+    $this->assertGuest();
+})->with([
+    'admin' => [UserRole::Admin, 'dashboard.admin'],
+    'santri' => [UserRole::Santri, 'dashboard.santri'],
+    'instruktur' => [UserRole::InfrastrukturSik, 'dashboard.infrastruktur_sik'],
+    'ka-lab mutu' => [UserRole::KaLabMutu, 'dashboard.ka_lab_mutu'],
+]);

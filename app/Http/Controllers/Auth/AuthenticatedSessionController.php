@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -34,10 +35,14 @@ class AuthenticatedSessionController extends Controller
         // Mengambil user yang berhasil login
         $user = $request->user();
 
+        abort_unless($user instanceof User, 403, 'Peran pengguna tidak dikenali. Hubungi administrator.');
+
+        $role = $user->resolvedRole();
+
+        abort_if($role === null, 403, 'Peran pengguna tidak dikenali. Hubungi administrator.');
+
         // Redirect langsung ke dashboard sesuai role
-        return redirect()->route(
-            $user->role->dashboardRoute()
-        );
+        return redirect()->route($role->dashboardRoute());
     }
 
     /**
@@ -53,7 +58,7 @@ class AuthenticatedSessionController extends Controller
         // Membuat token CSRF baru
         $request->session()->regenerateToken();
 
-        // Kembali ke halaman beranda
-        return redirect()->route('beranda');
+        // Kembali ke halaman login
+        return redirect()->route('login');
     }
 }

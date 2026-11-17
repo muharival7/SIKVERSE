@@ -89,43 +89,55 @@ function makeDashboardPresentationFixture(int $presentCount = 1, int $meetingCou
     return compact('admin', 'instructorUser', 'period', 'membership', 'santri');
 }
 
-test('admin recap shows actual arrival and departure times from attendance records', function () {
+test('admin recap uses the compact table without arrival or departure times', function () {
     $fixture = makeDashboardPresentationFixture();
 
     $this->actingAs($fixture['admin'])
         ->get(route('rekap-kehadiran-sik.index'))
         ->assertOk()
-        ->assertSee('Jam Datang')
-        ->assertSee('Jam Pulang')
-        ->assertSee('08:17')
-        ->assertSee('12:03')
+        ->assertSee('Nama Santri')
+        ->assertSee('Nomor Induk')
+        ->assertSee('Kelompok')
+        ->assertSee('Total Pertemuan')
+        ->assertSee('Status')
+        ->assertSee('Aksi')
+        ->assertSee('Detail')
+        ->assertDontSee('Jam Datang')
+        ->assertDontSee('Jam Pulang')
+        ->assertDontSee('08:17')
+        ->assertDontSee('12:03')
         ->assertDontSee('Tidak Lengkap');
 });
 
-test('instructor recap shows separate arrival and departure times from attendance records', function () {
+test('instructor recap uses the same compact table and exposes the detail link', function () {
     $fixture = makeDashboardPresentationFixture();
 
     $this->actingAs($fixture['instructorUser'])
         ->get(route('rekap-kehadiran-sik.index'))
         ->assertOk()
-        ->assertSee('Jam Datang')
-        ->assertSee('Jam Pulang')
-        ->assertSee('08:17')
-        ->assertSee('12:03')
+        ->assertSee('Nama Santri')
+        ->assertSee('Nomor Induk')
+        ->assertSee('Kelompok')
         ->assertSee('Total Pertemuan')
-        ->assertSee('Hadir')
-        ->assertSee('Izin')
-        ->assertSee('Sakit')
-        ->assertSee('Alpha')
-        ->assertSee('Persentase')
         ->assertSee('Status')
+        ->assertSee('Aksi')
+        ->assertSee('Detail')
+        ->assertDontSee('Jam Datang')
+        ->assertDontSee('Jam Pulang')
+        ->assertDontSee('08:17')
+        ->assertDontSee('12:03')
+        ->assertDontSee('<th class="text-center">Hadir</th>', false)
+        ->assertDontSee('<th class="text-center">Izin</th>', false)
+        ->assertDontSee('<th class="text-center">Sakit</th>', false)
+        ->assertDontSee('<th class="text-center">Alpha</th>', false)
+        ->assertDontSee('<th class="text-center">Persentase</th>', false)
         ->assertDontSee('<th class="text-center">Tidak Lengkap</th>', false)
         ->assertDontSee('<th>Bukti Izin</th>', false);
 });
 
-test('ka-lab dashboard explains failure using attendance data and configured threshold', function () {
+test('ka-lab dashboard omits the failure section while keeping graduation summaries and charts', function () {
     $fixture = makeDashboardPresentationFixture(presentCount: 11, meetingCount: 16);
-    $failure = KelulusanSik::query()->create([
+    KelulusanSik::query()->create([
         'anggota_periode_sik_id' => $fixture['membership']->id,
         'status' => 'Tidak Lulus',
         'keterangan' => 'Nilai evaluasi belum memenuhi ketentuan.',
@@ -135,13 +147,16 @@ test('ka-lab dashboard explains failure using attendance data and configured thr
     $this->actingAs($kaLab)
         ->get(route('dashboard.ka_lab_mutu'))
         ->assertOk()
-        ->assertSee('Santri dengan status Tidak Lulus')
-        ->assertSee('11/16')
-        ->assertSee('68.8%')
-        ->assertSee('5')
-        ->assertSee('14 kali')
-        ->assertSee('kurang 3 kali')
-        ->assertSee('Nilai evaluasi belum memenuhi ketentuan.');
+        ->assertDontSee('Santri dengan status Tidak Lulus')
+        ->assertDontSee('RINCIAN EVALUASI')
+        ->assertDontSee('Belum ada santri berstatus Tidak Lulus.')
+        ->assertDontSee('Nilai evaluasi belum memenuhi ketentuan.')
+        ->assertSee('Total Lulusan Tahun Ini')
+        ->assertSee('Evaluasi Mutu Kelulusan')
+        ->assertSee('Jumlah Lulusan per Tahun')
+        ->assertSee('Perbandingan Jumlah Kelulusan')
+        ->assertSee('data-graduation-chart="line"', false)
+        ->assertSee('data-graduation-chart="comparison"', false);
 });
 
 test('santri dashboard renders its attendance analysis in compact chart mode', function () {
@@ -157,6 +172,7 @@ test('santri dashboard renders its attendance analysis in compact chart mode', f
     $this->actingAs($santriUser)
         ->get(route('dashboard.santri'))
         ->assertOk()
+        ->assertSee('sd-santri-dashboard', false)
         ->assertSee('sd-trend-card--compact')
         ->assertSee('data-chart-size="compact"', false);
 });

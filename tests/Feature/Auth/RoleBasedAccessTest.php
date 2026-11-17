@@ -4,6 +4,7 @@ use App\Enums\UserRole;
 use App\Models\Santri;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
+use Illuminate\Support\Facades\DB;
 
 function makeRoleDashboardUser(UserRole $role): User
 {
@@ -149,4 +150,75 @@ test('database seeding refuses to promote an existing non-admin account', functi
         'email' => 'admin@example.test',
         'role' => UserRole::Santri->value,
     ]);
+});
+
+function makeUnknownRoleUser(): User
+{
+    $user = User::factory()->create();
+
+    DB::table('users')
+        ->where('id', $user->id)
+        ->update(['role' => 'unknown_role']);
+
+    return $user->fresh();
+}
+
+test('login refuses an account whose role is not recognised', function () {
+    $user = makeUnknownRoleUser();
+
+    $this->from('/login')->post('/login', [
+        'login' => $user->email,
+        'password' => 'password',
+    ])->assertRedirect('/login')
+        ->assertSessionHasErrors(['login' => 'Peran pengguna tidak dikenali. Hubungi administrator.']);
+
+    $this->assertGuest();
+});
+
+test('an account with an unknown role cannot open the dashboard entry or any role dashboard', function () {
+    $user = makeUnknownRoleUser();
+
+    $this->actingAs($user)->get(route('dashboard'))->assertForbidden();
+
+    foreach (UserRole::cases() as $role) {
+        $this->actingAs($user)
+            ->get(route($role->dashboardRoute()))
+            ->assertForbidden();
+    }
+});
+
+test('an account with an unknown role sees safe navigation without privileged menu links', function () {
+    $user = makeUnknownRoleUser();
+
+    $this->actingAs($user)
+        ->get(route('profile.edit'))
+        ->assertOk()
+        ->assertDontSee('Data Santri')
+        ->assertDontSee('Data Dosen')
+        ->assertDontSee('Rekap Absensi');
+});
+
+test('admin navigation only shows admin menu links', function () {
+    $user = User::factory()->create(['role' => UserRole::Admin]);
+
+    $this->actingAs($user)
+        ->get(route('dashboard.admin'))
+        ->assertOk()
+        ->assertSee('Data Santri')
+        ->assertSee('Data Dosen')
+        ->assertSee('Rekap Absensi');
+});
+
+test('instructor navigation only shows instructor menu links', function () {
+    $user = makeRoleDashboardUser(UserRole::InfrastrukturSik);
+
+    $this->actingAs($user)
+        ->get(route('dashboard.infrastruktur_sik'))
+        ->assertOk()
+        ->assertSee('Mahasiswa')
+        ->assertSee('Absen')
+        ->assertSee('Nilai')
+        ->assertSee('Kelompok Saya')
+        ->assertDontSee('Data Santri')
+        ->assertDontSee('Data Dosen');
 });

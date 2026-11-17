@@ -6,7 +6,9 @@ use App\Models\InfrastrukturSik;
 use App\Models\Kegiatan;
 use App\Models\Kelompok;
 use App\Models\Pertemuan;
+use App\Services\AttendanceRecapService;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -15,6 +17,10 @@ use Illuminate\View\View;
 
 class PertemuanController extends Controller
 {
+    public function __construct(private readonly AttendanceRecapService $attendanceRecapService)
+    {
+    }
+
     public function index(): View
     {
         $pertemuan = Pertemuan::with(['kegiatan.periode', 'instrukturPengganti', 'kelompokHost'])
@@ -31,7 +37,10 @@ class PertemuanController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        Pertemuan::create($this->validatedData($request));
+        DB::transaction(function () use ($request): void {
+            $pertemuan = Pertemuan::create($this->validatedData($request));
+            $this->attendanceRecapService->syncForPertemuan($pertemuan);
+        });
 
         return redirect()->route('pertemuan.index')
             ->with('success', 'Pertemuan berhasil ditambahkan.');
@@ -68,7 +77,12 @@ class PertemuanController extends Controller
             }
         }
 
-        $pertemuan->update($validated);
+        $kegiatanSebelumnya = (int) $pertemuan->kegiatan_id;
+
+        DB::transaction(function () use ($pertemuan, $validated, $kegiatanSebelumnya): void {
+            $pertemuan->update($validated);
+            $this->attendanceRecapService->syncForPertemuan($pertemuan, $kegiatanSebelumnya);
+        });
 
         return redirect()->route('pertemuan.index')
             ->with('success', 'Pertemuan berhasil diperbarui.');
@@ -77,7 +91,11 @@ class PertemuanController extends Controller
     public function destroy(Pertemuan $pertemuan): RedirectResponse
     {
         try {
-            $pertemuan->delete();
+            DB::transaction(function () use ($pertemuan): void {
+                $kegiatanId = (int) $pertemuan->kegiatan_id;
+                $pertemuan->delete();
+                $this->attendanceRecapService->syncForKegiatan($kegiatanId);
+            });
         } catch (QueryException) {
             return back()->with(
                 'error',

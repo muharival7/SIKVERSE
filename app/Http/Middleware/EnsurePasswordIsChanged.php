@@ -15,8 +15,10 @@ class EnsurePasswordIsChanged
         if (
             $user &&
             $user->must_change_password &&
-            !$request->routeIs(
+            ! $request->routeIs(
                 'password.change',
+                'change-password.update',
+                'password.custom-update',
                 'password.update'
             )
         ) {

@@ -15,7 +15,7 @@
                 @else
                     Rekap kelompok yang Anda ampu.
                 @endif
-                Ambang kehadiran: {{ config('sik.attendance.minimum_present', 14) }} dari {{ config('sik.attendance.meeting_count', 16) }} pertemuan.
+                Ambang kehadiran: {{ number_format($minimumPercentage, 1, ',', '.') }}% dari pertemuan Terlaksana.
             </p>
         </div>
         <div class="d-flex flex-wrap align-items-end gap-2">
@@ -41,9 +41,6 @@
     @php
         $totalSantri = $rekap->pluck('anggota_periode_sik_id')->unique()->count();
         $totalRekap = $rekap->count();
-        $rataKehadiran = $totalRekap > 0
-            ? $rekap->avg('persentase_kehadiran')
-            : 0;
     @endphp
 
     <div class="row g-3 mb-4">
@@ -75,7 +72,7 @@
                 <div class="card-body">
                     <div class="text-muted small">Rata-rata Kehadiran</div>
                     <h3 class="fw-bold text-info mb-0">
-                        {{ number_format($rataKehadiran, 2) }}%
+                        {{ $rataKehadiran === null ? '—' : number_format($rataKehadiran, 2, ',', '.').'%' }}
                     </h3>
                 </div>
             </div>
@@ -101,15 +98,9 @@
                             <th>Nama Santri</th>
                             <th>Nomor Induk</th>
                             <th>Kelompok</th>
-                            <th class="text-nowrap" title="Waktu masuk terakhir yang tersimpan untuk kegiatan ini">Jam Datang</th>
                             <th class="text-center">Total Pertemuan</th>
-                            <th class="text-center">Hadir</th>
-                            <th class="text-center">Izin</th>
-                            <th class="text-center">Sakit</th>
-                            <th class="text-center">Alpha</th>
-                            <th class="text-center text-nowrap" title="Waktu pulang terakhir yang tersimpan untuk kegiatan ini">Jam Pulang</th>
-                            <th class="text-center">Persentase</th>
                             <th class="text-center">Status</th>
+                            <th class="text-center">Aksi</th>
                         </tr>
                     </thead>
 
@@ -148,42 +139,8 @@
 
                                 <td>{{ $namaKelompok }}</td>
 
-                                <td class="text-nowrap">
-                                    {{ $item->jam_datang ? substr($item->jam_datang, 0, 5) : '—' }}
-                                    @if ($item->jam_datang_pertemuan)
-                                        <span class="d-block small text-muted">Pertemuan {{ $item->jam_datang_pertemuan }} · terakhir tercatat</span>
-                                    @endif
-                                </td>
-
                                 <td class="text-center">
                                     {{ $item->total_pertemuan ?? 0 }}
-                                </td>
-
-                                <td class="text-center text-success fw-semibold">
-                                    {{ $item->jumlah_hadir ?? 0 }}
-                                </td>
-
-                                <td class="text-center">
-                                    {{ $item->jumlah_izin ?? 0 }}
-                                </td>
-
-                                <td class="text-center">
-                                    {{ $item->jumlah_sakit ?? 0 }}
-                                </td>
-
-                                <td class="text-center text-danger">
-                                    {{ $item->jumlah_alpha ?? 0 }}
-                                </td>
-
-                                <td class="text-center text-nowrap">
-                                    {{ $item->jam_pulang ? substr($item->jam_pulang, 0, 5) : '—' }}
-                                    @if ($item->jam_pulang_pertemuan)
-                                        <span class="d-block small text-muted">Pertemuan {{ $item->jam_pulang_pertemuan }} · terakhir tercatat</span>
-                                    @endif
-                                </td>
-
-                                <td class="text-center fw-bold">
-                                    {{ number_format((float) $item->persentase_kehadiran, 2) }}%
                                 </td>
 
                                 <td class="text-center">
@@ -191,12 +148,19 @@
                                         {{ $status }}
                                     </span>
                                 </td>
+
+                                <td class="text-center">
+                                    <a class="btn btn-sm btn-outline-primary"
+                                       href="{{ route('rekap-kehadiran-sik.show', $item) }}">
+                                        Detail
+                                    </a>
+                                </td>
                             </tr>
 
                         @empty
 
                             <tr>
-                                <td colspan="13" class="text-center py-5">
+                                <td colspan="7" class="text-center py-5">
                                     <h5 class="fw-bold text-muted">
                                         Belum Ada Data Rekap
                                     </h5>

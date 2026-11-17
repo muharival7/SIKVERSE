@@ -3,12 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Enums\UserRole;
-use App\Models\AbsensiSik;
 use App\Models\InfrastrukturSik;
 use App\Models\KelulusanSik;
 use App\Models\PeriodeSik;
 use App\Models\RekapKehadiranSik;
 use App\Models\User;
+use App\Services\AttendanceRecapService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -17,6 +17,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class RekapKehadiranSikController extends Controller
 {
+    public function __construct(private readonly AttendanceRecapService $attendanceRecapService)
+    {
+    }
+
     /**
      * Menampilkan rekap kehadiran santri untuk instruktur SIK.
      */
@@ -31,38 +35,7 @@ class RekapKehadiranSikController extends Controller
         $selectedInstructor = $isAdmin ? $filterInstructor : null;
         $rekap = $rekapQuery->get();
 
-        $totalPertemuan = (int) config('sik.attendance.meeting_count', 16);
-        $minimumHadir = (int) config('sik.attendance.minimum_present', 14);
-
-        $rekap->each(function (RekapKehadiranSik $item) use ($totalPertemuan, $minimumHadir): void {
-            $jumlahHadir = min((int) $item->jumlah_hadir, $totalPertemuan);
-            $item->setAttribute('total_pertemuan', $totalPertemuan);
-            $item->setAttribute(
-                'persentase_kehadiran',
-                round(($jumlahHadir / $totalPertemuan) * 100, 2)
-            );
-            $item->setAttribute(
-                'status_kehadiran',
-                (int) $item->jumlah_hadir >= $minimumHadir ? 'Memenuhi' : 'Belum Memenuhi'
-            );
-
-            $activityAttendance = $item->anggotaPeriode?->absensi
-                ->filter(fn (AbsensiSik $attendance): bool => (int) $attendance->pertemuan?->kegiatan_id === (int) $item->kegiatan_id)
-                ->sortBy(fn (AbsensiSik $attendance): string => sprintf(
-                    '%s-%04d',
-                    $attendance->pertemuan?->tanggal?->format('Y-m-d') ?? '0000-00-00',
-                    (int) ($attendance->pertemuan?->pertemuan_ke ?? 0)
-                ))
-                ->values();
-
-            foreach (['waktu_masuk' => 'jam_datang', 'waktu_pulang' => 'jam_pulang'] as $field => $attribute) {
-                $lastRecorded = $activityAttendance
-                    ->filter(fn (AbsensiSik $attendance): bool => filled($attendance->{$field}))
-                    ->last();
-                $item->setAttribute($attribute, $lastRecorded?->{$field});
-                $item->setAttribute($attribute.'_pertemuan', $lastRecorded?->pertemuan?->pertemuan_ke);
-            }
-        });
+        $this->attendanceRecapService->prepareDisplay($rekap);
 
         $periodsQuery = PeriodeSik::query()->orderByDesc('tahun')->orderByDesc('id');
         if ($filterInstructor instanceof InfrastrukturSik) {
@@ -80,7 +53,45 @@ class RekapKehadiranSikController extends Controller
             'selectedInstructor',
             'periods',
             'selectedPeriodId'
-        ));
+        ))->with([
+            'minimumPercentage' => $this->attendanceRecapService->minimumPercentage(),
+            'rataKehadiran' => $this->attendanceRecapService->averagePercentage($rekap),
+            'noMeetingsStatus' => AttendanceRecapService::STATUS_NO_MEETINGS,
+        ]);
+    }
+
+    /**
+     * Menampilkan rincian kehadiran satu santri untuk satu kegiatan.
+     *
+     * Baris rekap dicari lagi melalui query yang sama dengan halaman indeks
+     * sehingga instruktur tidak dapat membuka rekap di luar kelompok binaannya.
+     */
+    public function show(Request $request, RekapKehadiranSik $rekapKehadiranSik): View
+    {
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+
+        $filterInstructor = null;
+        $item = $this->filteredRecapQuery($user, [], $filterInstructor)
+            ->whereKey($rekapKehadiranSik->id)
+            ->firstOrFail();
+
+        $this->attendanceRecapService->prepareDisplay([$item]);
+
+        $kegiatanId = (int) $item->kegiatan_id;
+        $riwayat = $item->anggotaPeriode?->absensi
+            ->filter(fn ($attendance): bool => (int) $attendance->pertemuan?->kegiatan_id === $kegiatanId)
+            ->sortBy(fn ($attendance): string => sprintf(
+                '%s-%04d',
+                $attendance->pertemuan?->tanggal?->format('Y-m-d') ?? '0000-00-00',
+                (int) ($attendance->pertemuan?->pertemuan_ke ?? 0)
+            ))
+            ->values() ?? collect();
+
+        return view('rekap-kehadiran-sik.show', compact('item', 'riwayat'))->with([
+            'minimumPercentage' => $this->attendanceRecapService->minimumPercentage(),
+            'noMeetingsStatus' => AttendanceRecapService::STATUS_NO_MEETINGS,
+        ]);
     }
 
     /** Download an Excel-compatible CSV using the same role and period scope as the recap page. */
@@ -92,10 +103,9 @@ class RekapKehadiranSikController extends Controller
         $filters = $this->validateFilters($request, $isAdmin);
         $filterInstructor = null;
         $query = $this->filteredRecapQuery($user, $filters, $filterInstructor);
-        $meetingCount = max(1, (int) config('sik.attendance.meeting_count', 16));
-        $minimumPresent = max(1, (int) config('sik.attendance.minimum_present', 14));
+        $recapService = $this->attendanceRecapService;
 
-        return response()->streamDownload(function () use ($query, $meetingCount, $minimumPresent): void {
+        return response()->streamDownload(function () use ($query, $recapService): void {
             $stream = fopen('php://output', 'wb');
             if ($stream === false) {
                 return;
@@ -109,13 +119,13 @@ class RekapKehadiranSikController extends Controller
             ]);
 
             $rowNumber = 0;
-            $query->reorder()->orderBy('id')->chunkById(500, function ($items) use ($stream, $meetingCount, $minimumPresent, &$rowNumber): void {
+            $query->reorder()->orderBy('id')->chunkById(500, function ($items) use ($stream, $recapService, &$rowNumber): void {
+                $recapService->prepareDisplay($items);
+
                 foreach ($items as $item) {
                     $rowNumber++;
                     $santri = $item->anggotaPeriode?->santri;
                     $anggota = $item->anggotaPeriode;
-                    $jumlahHadir = min((int) $item->jumlah_hadir, $meetingCount);
-                    $status = (int) $item->jumlah_hadir >= $minimumPresent ? 'Memenuhi' : 'Belum Memenuhi';
                     $values = [
                         $rowNumber,
                         $this->spreadsheetSafeCell($santri?->nomor_induk ?? ''),
@@ -123,14 +133,14 @@ class RekapKehadiranSikController extends Controller
                         $this->spreadsheetSafeCell($anggota?->periode?->nama_periode ?? ''),
                         $this->spreadsheetSafeCell($anggota?->kelompok?->nama_kelompok ?? ''),
                         $this->spreadsheetSafeCell($item->kegiatan?->nama_kegiatan ?? ''),
-                        $meetingCount,
-                        $jumlahHadir,
+                        (int) $item->total_pertemuan,
+                        (int) $item->jumlah_hadir,
                         (int) $item->jumlah_izin,
                         (int) $item->jumlah_sakit,
                         (int) $item->jumlah_alpha,
                         (int) $item->jumlah_tidak_lengkap,
-                        number_format(($jumlahHadir / $meetingCount) * 100, 2, '.', '').'%',
-                        $status,
+                        (string) $item->persentase_display,
+                        (string) $item->status_kehadiran,
                     ];
 
                     fputcsv($stream, $values);
@@ -197,60 +207,71 @@ class RekapKehadiranSikController extends Controller
      * Menampilkan laporan SIK untuk Ka-Lab Mutu.
      * Ka-Lab Mutu hanya memiliki akses melihat laporan.
      */
+    public function laporan(): View
+    {
+        // Rekap kelulusan per tahun
+        $kelulusanTahunan = KelulusanSik::query()
+            ->join(
+                'anggota_periode_sik as anggota',
+                'anggota.id',
+                '=',
+                'kelulusan_sik.anggota_periode_sik_id'
+            )
+            ->join(
+                'periode_sik as periode',
+                'periode.id',
+                '=',
+                'anggota.periode_sik_id'
+            )
+            ->select('periode.tahun')
+            ->selectRaw('COUNT(*) as total_kelulusan')
+            ->selectRaw("SUM(CASE WHEN kelulusan_sik.status = 'Lulus' THEN 1 ELSE 0 END) as jumlah_lulus")
+            ->selectRaw("SUM(CASE WHEN kelulusan_sik.status = 'Tidak Lulus' THEN 1 ELSE 0 END) as jumlah_tidak_lulus")
+            ->selectRaw("SUM(CASE WHEN kelulusan_sik.status = 'Belum Lulus' THEN 1 ELSE 0 END) as jumlah_belum_ditetapkan")
+            ->groupBy('periode.tahun')
+            ->orderByDesc('periode.tahun')
+            ->get();
 
-public function laporan(): View
-{
-    // Rekap kelulusan per tahun
-    $kelulusanTahunan = KelulusanSik::query()
-        ->join(
-            'anggota_periode_sik as anggota',
-            'anggota.id',
-            '=',
-            'kelulusan_sik.anggota_periode_sik_id'
-        )
-        ->join(
-            'periode_sik as periode',
-            'periode.id',
-            '=',
-            'anggota.periode_sik_id'
-        )
-        ->select('periode.tahun')
-        ->selectRaw('COUNT(*) as total_kelulusan')
-        ->selectRaw("SUM(CASE WHEN kelulusan_sik.status = 'Lulus' THEN 1 ELSE 0 END) as jumlah_lulus")
-        ->selectRaw("SUM(CASE WHEN kelulusan_sik.status = 'Tidak Lulus' THEN 1 ELSE 0 END) as jumlah_tidak_lulus")
-        ->selectRaw("SUM(CASE WHEN kelulusan_sik.status = 'Belum Lulus' THEN 1 ELSE 0 END) as jumlah_belum_ditetapkan")
-        ->groupBy('periode.tahun')
-        ->orderByDesc('periode.tahun')
-        ->get();
+        // Detail evaluasi kelulusan setiap santri
+        $detailKelulusan = KelulusanSik::with([
+            'anggotaPeriodeSik.santri',
+            'anggotaPeriodeSik.periode',
+            'anggotaPeriodeSik.kelompok',
+            'anggotaPeriodeSik.absensi',
+        ])
+            ->latest()
+            ->get();
 
-    // Detail evaluasi kelulusan setiap santri
-    $detailKelulusan = KelulusanSik::with([
-        'anggotaPeriodeSik.santri',
-        'anggotaPeriodeSik.periode',
-        'anggotaPeriodeSik.kelompok',
-        'anggotaPeriodeSik.absensi',
-    ])
-        ->latest()
-        ->get();
+        // Seluruh angka kehadiran berasal dari AttendanceRecapService.
+        $detailKelulusan->each(function (KelulusanSik $detail): void {
+            $metric = $this->attendanceRecapService->calculateForAnggota(
+                (int) $detail->anggota_periode_sik_id
+            );
 
-    // Syarat minimal kehadiran dari konfigurasi SIK
-    $minimumHadir = (int) config('sik.attendance.minimum_present');
+            $detail->setAttribute('attendance', $metric);
+            $detail->setAttribute('alasan_kehadiran', $metric['tersedia']
+                ? ($metric['memenuhi']
+                    ? 'Memenuhi ambang kehadiran '.number_format($this->attendanceRecapService->minimumPercentage(), 1, ',', '.').'% pada pertemuan Terlaksana.'
+                    : 'Belum memenuhi ambang kehadiran '.number_format($this->attendanceRecapService->minimumPercentage(), 1, ',', '.').'% pada pertemuan Terlaksana.')
+                : AttendanceRecapService::STATUS_NO_MEETINGS);
+        });
 
-    $totalPeserta = (int) $kelulusanTahunan->sum('total_kelulusan');
-    $totalLulus = (int) $kelulusanTahunan->sum('jumlah_lulus');
+        $minimumPercentage = $this->attendanceRecapService->minimumPercentage();
 
-    $persentaseKelulusan = $totalPeserta > 0
-        ? round(($totalLulus / $totalPeserta) * 100, 2)
-        : 0;
+        $totalPeserta = (int) $kelulusanTahunan->sum('total_kelulusan');
+        $totalLulus = (int) $kelulusanTahunan->sum('jumlah_lulus');
 
-    return view('laporan-sik.index', compact(
-        'kelulusanTahunan',
-        'detailKelulusan',
-        'minimumHadir',
-        'totalPeserta',
-        'totalLulus',
-        'persentaseKelulusan'
-    ));
-}
+        $persentaseKelulusan = $totalPeserta > 0
+            ? round(($totalLulus / $totalPeserta) * 100, 2)
+            : 0;
 
+        return view('laporan-sik.index', compact(
+            'kelulusanTahunan',
+            'detailKelulusan',
+            'minimumPercentage',
+            'totalPeserta',
+            'totalLulus',
+            'persentaseKelulusan'
+        ));
+    }
 }

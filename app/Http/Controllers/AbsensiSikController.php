@@ -6,10 +6,12 @@ use App\Enums\UserRole;
 use App\Models\AbsensiSik;
 use App\Models\AnggotaPeriodeSik;
 use App\Models\InfrastrukturSik;
+use App\Models\Kegiatan;
 use App\Models\Kelompok;
 use App\Models\Pertemuan;
 use App\Models\RekapKehadiranSik;
 use App\Models\RiwayatAbsensi;
+use App\Services\AttendanceRecapService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,6 +22,10 @@ use Illuminate\View\View;
 
 class AbsensiSikController extends Controller
 {
+    public function __construct(private readonly AttendanceRecapService $attendanceRecapService)
+    {
+    }
+
     public function index(Request $request): View
     {
         $isAdmin = $request->user()->role === UserRole::Admin;
@@ -132,21 +138,7 @@ class AbsensiSikController extends Controller
             ->latest()
             ->get();
 
-        $totalPertemuan = (int) config('sik.attendance.meeting_count', 16);
-        $minimumHadir = (int) config('sik.attendance.minimum_present', 14);
-
-        $rekap->each(function (RekapKehadiranSik $item) use ($totalPertemuan, $minimumHadir): void {
-            $jumlahHadir = min((int) $item->jumlah_hadir, $totalPertemuan);
-            $item->setAttribute('total_pertemuan', $totalPertemuan);
-            $item->setAttribute(
-                'persentase_kehadiran',
-                round(($jumlahHadir / $totalPertemuan) * 100, 2)
-            );
-            $item->setAttribute(
-                'status_kehadiran',
-                (int) $item->jumlah_hadir >= $minimumHadir ? 'Memenuhi' : 'Belum Memenuhi'
-            );
-        });
+        $this->attendanceRecapService->prepareDisplay($rekap);
 
         return view('santris.absensi-saya', [
             'santri' => $santri,
@@ -168,7 +160,7 @@ class AbsensiSikController extends Controller
         ]);
 
         $anggota = AnggotaPeriodeSik::with('kelompok')->findOrFail($validated['anggota_periode_sik_id']);
-        $pertemuan = Pertemuan::with(['kegiatan', 'kelompokHost'])->findOrFail($validated['pertemuan_id']);
+        $pertemuan = Pertemuan::with(['kegiatan.kelompok', 'kelompokHost'])->findOrFail($validated['pertemuan_id']);
         $instruktur = $this->currentInstructor($request);
         $this->authorizeAttendance($anggota, $pertemuan, $instruktur);
 
@@ -202,7 +194,7 @@ class AbsensiSikController extends Controller
             'alasan_perubahan' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $absensiSik->load(['anggotaPeriode.kelompok', 'pertemuan.kegiatan', 'pertemuan.kelompokHost']);
+        $absensiSik->load(['anggotaPeriode.kelompok', 'pertemuan.kegiatan.kelompok', 'pertemuan.kelompokHost']);
         $instruktur = $this->currentInstructor($request);
         $this->authorizeAttendance($absensiSik->anggotaPeriode, $absensiSik->pertemuan, $instruktur);
 
@@ -257,22 +249,68 @@ class AbsensiSikController extends Controller
             ]);
         }
 
-        if ((int) $anggota->periode_sik_id !== (int) $pertemuan->kegiatan?->periode_sik_id) {
+        $kegiatan = $pertemuan->kegiatan;
+
+        if (! $kegiatan instanceof Kegiatan) {
             throw ValidationException::withMessages([
-                'anggota_periode_sik_id' => 'Santri dan pertemuan harus berasal dari periode yang sama.',
+                'pertemuan_id' => 'Kegiatan pertemuan tidak ditemukan.',
             ]);
         }
 
-        $targetGroupId = $pertemuan->kelompok_host_id ?? $pertemuan->kegiatan?->kelompok_id;
+        $hostGroupId = $pertemuan->kelompok_host_id;
+        $kegiatanGroupId = $kegiatan->kelompok_id;
 
-        if ($targetGroupId !== null && (int) $anggota->kelompok_id !== (int) $targetGroupId) {
+        if ($hostGroupId !== null && $kegiatanGroupId !== null
+            && (int) $hostGroupId !== (int) $kegiatanGroupId) {
             throw ValidationException::withMessages([
-                'anggota_periode_sik_id' => 'Santri tidak terdaftar pada kelompok pertemuan ini.',
+                'pertemuan_id' => 'Kelompok host pertemuan dan kelompok kegiatan tidak konsisten.',
+            ]);
+        }
+
+        $targetGroupId = $hostGroupId ?? $kegiatanGroupId;
+
+        if ($targetGroupId === null) {
+            throw ValidationException::withMessages([
+                'pertemuan_id' => 'Target kelompok pertemuan belum ditentukan. Isi kelompok host pertemuan atau kelompok kegiatan terlebih dahulu.',
+            ]);
+        }
+
+        $targetGroup = $pertemuan->kelompokHost ?? $kegiatan->kelompok;
+
+        if (! $targetGroup instanceof Kelompok) {
+            throw ValidationException::withMessages([
+                'pertemuan_id' => 'Kelompok target pertemuan tidak ditemukan.',
+            ]);
+        }
+
+        $periodeIds = array_map('intval', array_filter([
+            $anggota->periode_sik_id,
+            $kegiatan->periode_sik_id,
+            $anggota->kelompok?->periode_sik_id,
+            $kegiatan->kelompok?->periode_sik_id,
+            $pertemuan->kelompokHost?->periode_sik_id,
+        ], static fn ($value): bool => $value !== null));
+
+        if (count(array_unique($periodeIds)) > 1) {
+            throw ValidationException::withMessages([
+                'anggota_periode_sik_id' => 'Periode santri, kegiatan, dan kelompok harus sama.',
+            ]);
+        }
+
+        if ($anggota->kelompok_id === null || (int) $anggota->kelompok_id !== (int) $targetGroupId) {
+            throw ValidationException::withMessages([
+                'anggota_periode_sik_id' => 'Santri tidak terdaftar pada kelompok target pertemuan ini.',
+            ]);
+        }
+
+        if (! $anggota->kelompok instanceof Kelompok) {
+            throw ValidationException::withMessages([
+                'anggota_periode_sik_id' => 'Kelompok santri tidak ditemukan.',
             ]);
         }
 
         if ($instruktur instanceof InfrastrukturSik) {
-            $isAssigned = (int) $anggota->kelompok?->instruktur_id === (int) $instruktur->id
+            $isAssigned = (int) $anggota->kelompok->instruktur_id === (int) $instruktur->id
                 || (int) $pertemuan->kelompokHost?->instruktur_id === (int) $instruktur->id
                 || (int) $pertemuan->instruktur_pengganti_id === (int) $instruktur->id;
 
@@ -294,42 +332,9 @@ class AbsensiSikController extends Controller
 
     private function syncRekap(AnggotaPeriodeSik $anggota, Pertemuan $pertemuan): void
     {
-        $kegiatanId = (int) $pertemuan->kegiatan_id;
-        $jumlah = AbsensiSik::query()
-            ->where('anggota_periode_sik_id', $anggota->id)
-            ->whereHas('pertemuan', fn ($query) => $query->where('kegiatan_id', $kegiatanId))
-            ->selectRaw('status, COUNT(*) as jumlah')
-            ->groupBy('status')
-            ->pluck('jumlah', 'status');
-
-        $jumlahHadir = (int) ($jumlah['Hadir'] ?? 0);
-        $jumlahIzin = (int) ($jumlah['Izin'] ?? 0);
-        $jumlahSakit = (int) ($jumlah['Sakit'] ?? 0);
-        $jumlahAlpha = (int) ($jumlah['Alpha'] ?? 0);
-        $jumlahTidakLengkap = (int) ($jumlah['Tidak Lengkap'] ?? 0);
-        $totalPertemuan = (int) config('sik.attendance.meeting_count', 16);
-        $minimumHadir = (int) config('sik.attendance.minimum_present', 14);
-        $jumlahHadirUntukPersentase = min($jumlahHadir, $totalPertemuan);
-
-        RekapKehadiranSik::updateOrCreate(
-            [
-                'anggota_periode_sik_id' => $anggota->id,
-                'kegiatan_id' => $kegiatanId,
-            ],
-            [
-                'total_pertemuan' => $totalPertemuan,
-                'jumlah_hadir' => $jumlahHadir,
-                'jumlah_izin' => $jumlahIzin,
-                'jumlah_sakit' => $jumlahSakit,
-                'jumlah_alpha' => $jumlahAlpha,
-                'jumlah_tidak_lengkap' => $jumlahTidakLengkap,
-                'persentase_kehadiran' => $totalPertemuan > 0
-                    ? round(($jumlahHadirUntukPersentase / $totalPertemuan) * 100, 2)
-                    : 0,
-                'status_kehadiran' => $jumlahHadir >= $minimumHadir
-                    ? 'Memenuhi'
-                    : 'Belum Memenuhi',
-            ]
+        $this->attendanceRecapService->sync(
+            (int) $anggota->id,
+            (int) $pertemuan->kegiatan_id
         );
     }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Requests\Auth;
 
 use App\Enums\UserRole;
 use App\Models\Santri;
+use App\Models\User;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
@@ -59,10 +60,22 @@ class LoginRequest extends FormRequest
             ]);
         }
 
-        $isInactive = match ($this->user()?->role) {
-            UserRole::Santri => $this->user()?->santri?->status !== 'Aktif',
-            UserRole::InfrastrukturSik => $this->user()?->infrastrukturSik?->status === 'Tidak Aktif',
-            UserRole::KaLabMutu => $this->user()?->kaLabMutu?->status === 'Tidak Aktif',
+        $user = $this->user();
+        $role = $user instanceof User ? $user->resolvedRole() : null;
+
+        if ($role === null) {
+            Auth::logout();
+            RateLimiter::hit($this->throttleKey());
+
+            throw ValidationException::withMessages([
+                'login' => 'Peran pengguna tidak dikenali. Hubungi administrator.',
+            ]);
+        }
+
+        $isInactive = match ($role) {
+            UserRole::Santri => $user->santri?->status !== 'Aktif',
+            UserRole::InfrastrukturSik => $user->infrastrukturSik?->status === 'Tidak Aktif',
+            UserRole::KaLabMutu => $user->kaLabMutu?->status === 'Tidak Aktif',
             default => false,
         };
 

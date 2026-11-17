@@ -13,6 +13,7 @@ use App\Http\Controllers\NilaiController;
 use App\Http\Controllers\PeriodeSikController;
 use App\Http\Controllers\PertemuanController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\RabuMengajiController;
 use App\Http\Controllers\RekapAbsensiDosenController;
 use App\Http\Controllers\RekapKehadiranSikController;
 use App\Http\Controllers\SantriController;
@@ -72,7 +73,11 @@ Route::middleware($authenticatedMiddleware)->group(function (): void {
 
         abort_unless($user instanceof User, 401);
 
-        return redirect()->route($user->role->dashboardRoute());
+        $role = $user->resolvedRole();
+
+        abort_if($role === null, 403, 'Peran pengguna tidak dikenali. Hubungi administrator.');
+
+        return redirect()->route($role->dashboardRoute());
 
     })->name('dashboard');
 
@@ -192,6 +197,15 @@ Route::middleware($authenticatedMiddleware)->group(function (): void {
             ->name('rekap-kehadiran-sik.index');
         Route::get('/rekap-kehadiran-sik/export', [RekapKehadiranSikController::class, 'export'])
             ->name('rekap-kehadiran-sik.export');
+        Route::get('/rekap-kehadiran-sik/{rekapKehadiranSik}', [RekapKehadiranSikController::class, 'show'])
+            ->whereNumber('rekapKehadiranSik')
+            ->name('rekap-kehadiran-sik.show');
+
+        Route::get('/rabu-mengaji', [RabuMengajiController::class, 'index'])
+            ->name('rabu-mengaji.index');
+        Route::get('/rabu-mengaji/{absensiSik}', [RabuMengajiController::class, 'show'])
+            ->whereNumber('absensiSik')
+            ->name('rabu-mengaji.show');
     });
 
     Route::middleware('role:infrastruktur_sik')->group(function (): void {

@@ -24,14 +24,14 @@
 <body class="font-sans antialiased">
 
     @php
-        $layoutRole = Auth::user()?->role;
+        $layoutRole = Auth::user()?->resolvedRole();
         $usesSidebarLayout = in_array($layoutRole, [
             \App\Enums\UserRole::Admin,
             \App\Enums\UserRole::InfrastrukturSik,
         ], true);
     @endphp
 
-    <div class="min-h-screen {{ $usesSidebarLayout ? 'sik-app-frame sik-app-frame--sidebar' : '' }}">
+    <div class="min-h-screen sik-has-fixed-logout {{ $usesSidebarLayout ? 'sik-app-frame sik-app-frame--sidebar' : '' }}">
 
         @include('layouts.navigation')
 
@@ -51,19 +51,17 @@
             @endisset
         </main>
 
-        @unless ($usesSidebarLayout)
-            <footer class="sd-app-footer {{ $layoutRole === \App\Enums\UserRole::KaLabMutu ? 'sd-app-footer--start' : '' }}">
-                <div class="container">
-                    <form method="POST" action="{{ route('logout') }}" class="mb-0">
-                        @csrf
-                        <button class="sd-app-logout" type="submit">
-                            <x-sik-icon name="logout" class="sik-icon" />
-                            <span>Keluar</span>
-                        </button>
-                    </form>
-                </div>
-            </footer>
-        @endunless
+        @auth
+            <div class="sik-fixed-logout">
+                <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button class="sd-app-logout" type="submit" aria-label="Keluar dari SIKVERSE">
+                        <x-sik-icon name="logout" class="sik-icon" />
+                        <span>Keluar</span>
+                    </button>
+                </form>
+            </div>
+        @endauth
 
     </div>
 
