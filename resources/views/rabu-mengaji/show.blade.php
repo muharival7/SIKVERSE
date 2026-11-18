@@ -20,6 +20,12 @@
         <a class="btn btn-outline-secondary" href="{{ route('rabu-mengaji.index') }}">
             Kembali ke Rabu Mengaji
         </a>
+
+        @if ($catatan->pertemuan?->status !== 'Dibatalkan')
+            <a class="btn btn-success" href="{{ route('rabu-mengaji.input', $catatan->pertemuan) }}">
+                Input Kehadiran
+            </a>
+        @endif
     </div>
 
     <div class="card border-0 shadow-sm mb-4">
@@ -37,7 +43,7 @@
                     <div class="fw-semibold">{{ $catatan->anggotaPeriode?->santri?->nomor_induk ?? '—' }}</div>
                 </div>
                 <div class="col-sm-6 col-lg-4">
-                    <div class="text-muted small">Kelompok</div>
+                    <div class="text-muted small">Kelompok Asal</div>
                     <div class="fw-semibold">
                         {{ $catatan->anggotaPeriode?->kelompok?->nama_kelompok ?? $catatan->anggotaPeriode?->kelompok?->nama ?? '—' }}
                     </div>
@@ -69,17 +75,15 @@
     <div class="row g-3 mb-4">
         @if ($rekap)
             @php
-                $jumlahHadir = min((int) $rekap->jumlah_hadir, $meetingCount);
-                $persentase = $meetingCount > 0 ? round(($jumlahHadir / $meetingCount) * 100, 2) : 0;
-                $statusRekap = (int) $rekap->jumlah_hadir >= $minimumPresent ? 'Memenuhi' : 'Belum Memenuhi';
+                $statusRekap = $rekap->status_kehadiran;
             @endphp
             @foreach ([
                 ['Total Hadir', $rekap->jumlah_hadir],
                 ['Total Izin', $rekap->jumlah_izin],
                 ['Total Sakit', $rekap->jumlah_sakit],
                 ['Total Alpha', $rekap->jumlah_alpha],
-                ['Total pertemuan diperhitungkan', $meetingCount],
-                ['Persentase kehadiran', number_format($persentase, 1, ',', '.').'%'],
+                ['Total pertemuan Terlaksana', $rekap->total_pertemuan],
+                ['Persentase kehadiran', $rekap->persentase_display],
             ] as [$label, $value])
                 <div class="col-6 col-md-4 col-xl-2">
                     <div class="card h-100 border-0 shadow-sm">
@@ -95,7 +99,7 @@
             <div class="col-12">
                 <div class="alert alert-light border mb-0">
                     Status pemenuhan batas kehadiran: <strong>{{ $statusRekap }}</strong>
-                    (ambang {{ number_format(($minimumPresent / $meetingCount) * 100, 1, ',', '.') }}%).
+                    (ambang {{ number_format($minimumPercentage, 1, ',', '.') }}%).
                 </div>
             </div>
         @else

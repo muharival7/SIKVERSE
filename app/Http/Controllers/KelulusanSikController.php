@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AnggotaPeriodeSik;
 use App\Models\KelulusanSik;
+use App\Services\AttendanceRecapService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,6 +14,8 @@ use Illuminate\View\View;
 
 class KelulusanSikController extends Controller
 {
+    public function __construct(private readonly AttendanceRecapService $attendanceRecapService) {}
+
     public function index(): View
     {
         $kelulusan = KelulusanSik::with([
@@ -112,13 +115,18 @@ class KelulusanSikController extends Controller
 
         if ($validated['status'] === 'Lulus') {
             $anggota = AnggotaPeriodeSik::query()->findOrFail($validated['anggota_periode_sik_id']);
-            $jumlahHadir = $anggota->absensi()->where('status', 'Hadir')->count();
-            $minimumHadir = (int) config('sik.attendance.minimum_present');
-            $totalPertemuan = (int) config('sik.attendance.meeting_count');
+            $metric = $this->attendanceRecapService->calculateForAnggota((int) $anggota->id);
 
-            if ($jumlahHadir < $minimumHadir) {
+            if (! $metric['tersedia']) {
                 throw ValidationException::withMessages([
-                    'status' => "Santri harus hadir minimal {$minimumHadir} dari {$totalPertemuan} pertemuan. Kehadiran saat ini {$jumlahHadir}.",
+                    'status' => 'Santri tidak dapat dinyatakan lulus karena belum ada pertemuan Terlaksana pada kegiatan yang diikuti.',
+                ]);
+            }
+
+            if (! $metric['memenuhi']) {
+                $minimumPercentage = $this->attendanceRecapService->minimumPercentage();
+                throw ValidationException::withMessages([
+                    'status' => "Santri harus memenuhi ambang kehadiran {$minimumPercentage}% pada pertemuan Terlaksana. Persentase saat ini ".number_format((float) $metric['persentase'], 2, ',', '.').'%.',
                 ]);
             }
         }

@@ -18,6 +18,7 @@ if ($role === \App\Enums\UserRole::Admin) {
         ['label' => 'Kelola Status Kelulusan', 'route' => 'kelulusan-sik.index', 'matches' => ['kelulusan-sik.*'], 'icon' => 'report'],
 
         ['label' => 'Data Dosen', 'route' => 'users.index', 'matches' => ['users.*'], 'icon' => 'users'],
+        ['label' => 'Rekap Absensi Dosen', 'route' => 'rekap-absensi-dosen.index', 'matches' => ['rekap-absensi-dosen.*'], 'icon' => 'report'],
         ['label' => 'Rekap Absensi', 'route' => 'rekap-kehadiran-sik.index', 'matches' => ['rekap-kehadiran-sik.*'], 'icon' => 'report'],
         ['label' => 'Rabu Mengaji', 'route' => 'rabu-mengaji.index', 'matches' => ['rabu-mengaji.*'], 'icon' => 'attendance'],
     ];

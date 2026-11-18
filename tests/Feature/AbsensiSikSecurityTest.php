@@ -305,8 +305,8 @@ test('a valid attendance record is stored and the recap remains consistent', fun
         'anggota_periode_sik_id' => $fixture['anggota']->id,
         'kegiatan_id' => $fixture['kegiatan']->id,
         'jumlah_hadir' => 1,
-        'persentase_kehadiran' => 6.25,
-        'status_kehadiran' => 'Belum Memenuhi',
+        'persentase_kehadiran' => 100.00,
+        'status_kehadiran' => 'Memenuhi',
     ]);
     $this->assertDatabaseCount('riwayat_absensi', 0);
     expect(RekapKehadiranSik::count())->toBe(1);

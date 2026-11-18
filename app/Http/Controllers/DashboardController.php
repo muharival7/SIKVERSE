@@ -20,9 +20,7 @@ use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
-    public function __construct(private readonly AttendanceRecapService $attendanceRecapService)
-    {
-    }
+    public function __construct(private readonly AttendanceRecapService $attendanceRecapService) {}
 
     public function __invoke(Request $request): View
     {
@@ -172,8 +170,13 @@ class DashboardController extends Controller
         $recaps = $recapQuery->get();
         $this->attendanceRecapService->prepareDisplay($recaps);
         $recapsTersedia = $recaps->filter(fn (RekapKehadiranSik $recap): bool => (bool) $recap->tersedia);
-        $possibleAttendance = (int) $recapsTersedia->sum(fn (RekapKehadiranSik $recap): int => (int) $recap->total_pertemuan);
-        $presentAttendance = (int) $recapsTersedia->sum(fn (RekapKehadiranSik $recap): int => (int) $recap->jumlah_hadir);
+        $hadirTotal = (int) $recapsTersedia->sum(fn (RekapKehadiranSik $recap): int => (int) $recap->jumlah_hadir);
+        $izinTotal = (int) $recapsTersedia->sum(fn (RekapKehadiranSik $recap): int => (int) $recap->jumlah_izin);
+        $sakitTotal = (int) $recapsTersedia->sum(fn (RekapKehadiranSik $recap): int => (int) $recap->jumlah_sakit);
+        $alphaTotal = (int) $recapsTersedia->sum(fn (RekapKehadiranSik $recap): int => (int) $recap->jumlah_alpha);
+        $tidakLengkapTotal = (int) $recapsTersedia->sum(fn (RekapKehadiranSik $recap): int => (int) $recap->jumlah_tidak_lengkap);
+        $totalPertemuan = (int) $recapsTersedia->sum(fn (RekapKehadiranSik $recap): int => (int) $recap->total_pertemuan);
+        $tidakHadirTotal = $izinTotal + $sakitTotal + $alphaTotal + $tidakLengkapTotal;
 
         $participantsQuery = AnggotaPeriodeSik::query()->where('status', 'Aktif');
 
@@ -229,6 +232,8 @@ class DashboardController extends Controller
                 'rataKehadiran' => $this->attendanceRecapService->averagePercentage($recapsTersedia),
                 'totalRekap' => $recaps->count(),
                 'memenuhiTarget' => $recaps->where('status_kehadiran', AttendanceRecapService::STATUS_MET)->count(),
+                'noMeetings' => $recapsTersedia->isEmpty(),
+                'noMeetingsStatus' => AttendanceRecapService::STATUS_NO_MEETINGS,
             ],
             'adminRecentAttendance' => $orderedAttendance->reverse()->take(6)->values(),
             'adminRecentSantris' => Santri::query()
@@ -238,10 +243,15 @@ class DashboardController extends Controller
                 ->get(),
             'adminAttendanceTrend' => $this->attendanceTrend($orderedAttendance),
             'adminAttendanceDistribution' => [
-                'hadir' => $presentAttendance,
-                'tidakHadir' => max(0, $possibleAttendance - $presentAttendance),
-                'persentase' => $possibleAttendance > 0
-                    ? round(($presentAttendance / $possibleAttendance) * 100, 1)
+                'hadir' => $hadirTotal,
+                'izin' => $izinTotal,
+                'sakit' => $sakitTotal,
+                'alpha' => $alphaTotal,
+                'tidakLengkap' => $tidakLengkapTotal,
+                'tidakHadir' => $tidakHadirTotal,
+                'totalPertemuan' => $totalPertemuan,
+                'persentase' => $totalPertemuan > 0
+                    ? round(($hadirTotal / $totalPertemuan) * 100, 1)
                     : null,
             ],
         ];

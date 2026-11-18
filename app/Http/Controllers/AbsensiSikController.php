@@ -8,9 +8,12 @@ use App\Models\AnggotaPeriodeSik;
 use App\Models\InfrastrukturSik;
 use App\Models\Kegiatan;
 use App\Models\Kelompok;
+use App\Models\PeriodeSik;
 use App\Models\Pertemuan;
 use App\Models\RekapKehadiranSik;
 use App\Models\RiwayatAbsensi;
+use App\Models\User;
+use App\Services\AttendanceAuthorizationService;
 use App\Services\AttendanceRecapService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
@@ -22,9 +25,10 @@ use Illuminate\View\View;
 
 class AbsensiSikController extends Controller
 {
-    public function __construct(private readonly AttendanceRecapService $attendanceRecapService)
-    {
-    }
+    public function __construct(
+        private readonly AttendanceRecapService $attendanceRecapService,
+        private readonly AttendanceAuthorizationService $attendanceAuthorizationService
+    ) {}
 
     public function index(Request $request): View
     {
@@ -34,7 +38,7 @@ class AbsensiSikController extends Controller
         $visibleGroupIds = collect();
 
         $absensiQuery = AbsensiSik::with([
-            'pertemuan.kegiatan',
+            'pertemuan.kegiatan.periode',
             'anggotaPeriode.periode',
             'anggotaPeriode.kelompok',
             'anggotaPeriode.santri',
@@ -145,6 +149,8 @@ class AbsensiSikController extends Controller
             'absensi' => $absensi,
             'totalAbsensi' => $absensi->total(),
             'rekap' => $rekap,
+            'minimumPercentage' => $this->attendanceRecapService->minimumPercentage(),
+            'noMeetingsStatus' => AttendanceRecapService::STATUS_NO_MEETINGS,
         ]);
     }
 
@@ -162,7 +168,7 @@ class AbsensiSikController extends Controller
         $anggota = AnggotaPeriodeSik::with('kelompok')->findOrFail($validated['anggota_periode_sik_id']);
         $pertemuan = Pertemuan::with(['kegiatan.kelompok', 'kelompokHost'])->findOrFail($validated['pertemuan_id']);
         $instruktur = $this->currentInstructor($request);
-        $this->authorizeAttendance($anggota, $pertemuan, $instruktur);
+        $this->attendanceAuthorizationService->authorize($anggota, $pertemuan, $instruktur);
 
         try {
             DB::transaction(function () use ($validated, $anggota, $pertemuan, $instruktur): void {
@@ -196,7 +202,7 @@ class AbsensiSikController extends Controller
 
         $absensiSik->load(['anggotaPeriode.kelompok', 'pertemuan.kegiatan.kelompok', 'pertemuan.kelompokHost']);
         $instruktur = $this->currentInstructor($request);
-        $this->authorizeAttendance($absensiSik->anggotaPeriode, $absensiSik->pertemuan, $instruktur);
+        $this->attendanceAuthorizationService->authorize($absensiSik->anggotaPeriode, $absensiSik->pertemuan, $instruktur);
 
         $buktiMenunggu = $absensiSik->buktiKetidakhadiran()
             ->whereIn('status_verifikasi', ['Menunggu', 'Diterima'])
@@ -238,84 +244,64 @@ class AbsensiSikController extends Controller
             ->with('success', 'Absensi berhasil diperbarui.');
     }
 
-    private function authorizeAttendance(
-        AnggotaPeriodeSik $anggota,
-        Pertemuan $pertemuan,
-        ?InfrastrukturSik $instruktur
-    ): void {
-        if ($pertemuan->status === 'Dibatalkan') {
+    /**
+     * Ubah tanggal pertemuan tanpa menyentuh catatan absensi. Absensi tetap
+     * terhubung lewat pertemuan_id, sehingga status, identitas santri, dan
+     * kegiatan/kelompok tidak berubah.
+     */
+    public function ubahTanggalPertemuan(Request $request, Pertemuan $pertemuan): RedirectResponse
+    {
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+
+        $validated = $request->validate([
+            'tanggal_baru' => ['required', 'date', 'date_format:Y-m-d'],
+            'konfirmasi' => ['nullable', 'accepted'],
+        ]);
+
+        $pertemuan->load(['kegiatan.periode', 'kegiatan.kelompok', 'kelompokHost']);
+        $instruktur = $this->currentInstructor($request);
+        $this->attendanceAuthorizationService->authorizePertemuanDateChange($pertemuan, $instruktur);
+
+        if ($pertemuan->absensi()->exists() && ! $request->boolean('konfirmasi')) {
             throw ValidationException::withMessages([
-                'pertemuan_id' => 'Pertemuan yang dibatalkan tidak menerima absensi.',
+                'konfirmasi' => 'Konfirmasi diperlukan untuk mengubah tanggal pertemuan yang sudah memiliki catatan absensi.',
             ]);
         }
 
         $kegiatan = $pertemuan->kegiatan;
+        $periode = $kegiatan?->periode;
 
-        if (! $kegiatan instanceof Kegiatan) {
+        if (! $kegiatan instanceof Kegiatan || ! $periode instanceof PeriodeSik) {
             throw ValidationException::withMessages([
-                'pertemuan_id' => 'Kegiatan pertemuan tidak ditemukan.',
+                'tanggal_baru' => 'Kegiatan pertemuan tidak memiliki periode SIK yang terdefinisi.',
             ]);
         }
 
-        $hostGroupId = $pertemuan->kelompok_host_id;
-        $kegiatanGroupId = $kegiatan->kelompok_id;
+        $tanggalMulai = $periode->tanggal_mulai->toDateString();
+        $tanggalSelesai = $periode->tanggal_selesai->toDateString();
 
-        if ($hostGroupId !== null && $kegiatanGroupId !== null
-            && (int) $hostGroupId !== (int) $kegiatanGroupId) {
+        if ($validated['tanggal_baru'] < $tanggalMulai || $validated['tanggal_baru'] > $tanggalSelesai) {
             throw ValidationException::withMessages([
-                'pertemuan_id' => 'Kelompok host pertemuan dan kelompok kegiatan tidak konsisten.',
+                'tanggal_baru' => 'Tanggal pertemuan harus berada dalam rentang periode "'.$periode->nama_periode.'" ('.$tanggalMulai.' hingga '.$tanggalSelesai.').',
             ]);
         }
 
-        $targetGroupId = $hostGroupId ?? $kegiatanGroupId;
+        $tanggalLama = $pertemuan->tanggal->toDateString();
 
-        if ($targetGroupId === null) {
-            throw ValidationException::withMessages([
-                'pertemuan_id' => 'Target kelompok pertemuan belum ditentukan. Isi kelompok host pertemuan atau kelompok kegiatan terlebih dahulu.',
-            ]);
+        if ($tanggalLama === $validated['tanggal_baru']) {
+            return redirect()->route('absensi-sik.index')
+                ->with('success', 'Tanggal pertemuan tidak berubah.');
         }
 
-        $targetGroup = $pertemuan->kelompokHost ?? $kegiatan->kelompok;
+        DB::transaction(function () use ($pertemuan, $validated): void {
+            // Hanya pertemuan yang diubah. Catatan absensi tetap terhubung
+            // melalui pertemuan_id tanpa perubahan status atau identitas.
+            $pertemuan->update(['tanggal' => $validated['tanggal_baru']]);
+        });
 
-        if (! $targetGroup instanceof Kelompok) {
-            throw ValidationException::withMessages([
-                'pertemuan_id' => 'Kelompok target pertemuan tidak ditemukan.',
-            ]);
-        }
-
-        $periodeIds = array_map('intval', array_filter([
-            $anggota->periode_sik_id,
-            $kegiatan->periode_sik_id,
-            $anggota->kelompok?->periode_sik_id,
-            $kegiatan->kelompok?->periode_sik_id,
-            $pertemuan->kelompokHost?->periode_sik_id,
-        ], static fn ($value): bool => $value !== null));
-
-        if (count(array_unique($periodeIds)) > 1) {
-            throw ValidationException::withMessages([
-                'anggota_periode_sik_id' => 'Periode santri, kegiatan, dan kelompok harus sama.',
-            ]);
-        }
-
-        if ($anggota->kelompok_id === null || (int) $anggota->kelompok_id !== (int) $targetGroupId) {
-            throw ValidationException::withMessages([
-                'anggota_periode_sik_id' => 'Santri tidak terdaftar pada kelompok target pertemuan ini.',
-            ]);
-        }
-
-        if (! $anggota->kelompok instanceof Kelompok) {
-            throw ValidationException::withMessages([
-                'anggota_periode_sik_id' => 'Kelompok santri tidak ditemukan.',
-            ]);
-        }
-
-        if ($instruktur instanceof InfrastrukturSik) {
-            $isAssigned = (int) $anggota->kelompok->instruktur_id === (int) $instruktur->id
-                || (int) $pertemuan->kelompokHost?->instruktur_id === (int) $instruktur->id
-                || (int) $pertemuan->instruktur_pengganti_id === (int) $instruktur->id;
-
-            abort_unless($isAssigned, 403);
-        }
+        return redirect()->route('absensi-sik.index')
+            ->with('success', 'Tanggal pertemuan berhasil diubah dari '.$tanggalLama.' menjadi '.$validated['tanggal_baru'].'.');
     }
 
     private function currentInstructor(Request $request): ?InfrastrukturSik

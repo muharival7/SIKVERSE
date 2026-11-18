@@ -4,15 +4,28 @@ namespace App\Http\Controllers;
 
 use App\Enums\UserRole;
 use App\Models\AbsensiSik;
+use App\Models\AnggotaPeriodeSik;
+use App\Models\InfrastrukturSik;
 use App\Models\Kegiatan;
+use App\Models\Pertemuan;
 use App\Models\RekapKehadiranSik;
 use App\Models\User;
+use App\Services\AttendanceAuthorizationService;
+use App\Services\AttendanceRecapService;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class RabuMengajiController extends Controller
 {
+    public function __construct(
+        private readonly AttendanceRecapService $attendanceRecapService,
+        private readonly AttendanceAuthorizationService $attendanceAuthorizationService
+    ) {}
+
     /** Daftar kehadiran Rabu Mengaji memakai kegiatan, pertemuan, dan absensi_sik yang sudah ada. */
     public function index(Request $request): View
     {
@@ -25,16 +38,18 @@ class RabuMengajiController extends Controller
             'kegiatan_id' => ['nullable', 'integer'],
         ]);
 
-        $kegiatan = $this->mengajiActivities()->orderBy('nama_kegiatan')->get();
+        $kegiatan = $this->sharedActivities()->orderBy('nama_kegiatan')->get();
         $query = $this->scopedAbsensiQuery($user);
         $this->applyFilters($query, $filters);
 
         $summary = (clone $query)
+            ->whereHas('pertemuan', fn (Builder $query): mixed => $query->where('status', 'Terlaksana'))
+            ->whereIn('absensi_sik.status', ['Hadir', 'Izin', 'Sakit', 'Alpha'])
             ->selectRaw('COUNT(*) as total_pertemuan')
-            ->selectRaw("SUM(CASE WHEN status = 'Hadir' THEN 1 ELSE 0 END) as total_hadir")
-            ->selectRaw("SUM(CASE WHEN status = 'Izin' THEN 1 ELSE 0 END) as total_izin")
-            ->selectRaw("SUM(CASE WHEN status = 'Sakit' THEN 1 ELSE 0 END) as total_sakit")
-            ->selectRaw("SUM(CASE WHEN status = 'Alpha' THEN 1 ELSE 0 END) as total_alpha")
+            ->selectRaw("SUM(CASE WHEN absensi_sik.status = 'Hadir' THEN 1 ELSE 0 END) as total_hadir")
+            ->selectRaw("SUM(CASE WHEN absensi_sik.status = 'Izin' THEN 1 ELSE 0 END) as total_izin")
+            ->selectRaw("SUM(CASE WHEN absensi_sik.status = 'Sakit' THEN 1 ELSE 0 END) as total_sakit")
+            ->selectRaw("SUM(CASE WHEN absensi_sik.status = 'Alpha' THEN 1 ELSE 0 END) as total_alpha")
             ->first();
 
         $absensi = (clone $query)
@@ -47,7 +62,10 @@ class RabuMengajiController extends Controller
             ->paginate(15)
             ->withQueryString();
 
-        return view('rabu-mengaji.index', compact('absensi', 'kegiatan', 'filters', 'summary'));
+        return view('rabu-mengaji.index', compact('absensi', 'kegiatan', 'filters', 'summary'))
+            ->with([
+                'minimumPercentage' => $this->attendanceRecapService->minimumPercentage(),
+            ]);
     }
 
     /** Rincian kehadiran satu catatan Rabu Mengaji beserta riwayat dan rekapnya. */
@@ -66,7 +84,10 @@ class RabuMengajiController extends Controller
             ->findOrFail($absensiSik->id);
 
         $kegiatan = $catatan->pertemuan?->kegiatan;
-        abort_unless($kegiatan instanceof Kegiatan && $this->isMengajiActivity($kegiatan), 404);
+        abort_unless(
+            $kegiatan instanceof Kegiatan && $this->attendanceAuthorizationService->isSharedActivity($kegiatan),
+            404
+        );
 
         $riwayat = AbsensiSik::query()
             ->with('pertemuan')
@@ -85,53 +106,180 @@ class RabuMengajiController extends Controller
             ->where('kegiatan_id', $kegiatan->id)
             ->first();
 
-        $meetingCount = max(1, (int) config('sik.attendance.meeting_count', 16));
-        $minimumPresent = max(1, (int) config('sik.attendance.minimum_present', 14));
+        if ($rekap instanceof RekapKehadiranSik) {
+            $this->attendanceRecapService->prepareDisplay([$rekap]);
+        }
+
+        $minimumPercentage = $this->attendanceRecapService->minimumPercentage();
 
         return view('rabu-mengaji.show', compact(
             'catatan',
             'kegiatan',
             'riwayat',
             'rekap',
-            'meetingCount',
-            'minimumPresent'
+            'minimumPercentage'
         ));
     }
 
+    public function edit(Request $request, Pertemuan $pertemuan): View
+    {
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+
+        $kegiatan = $pertemuan->kegiatan;
+
+        if (! $kegiatan instanceof Kegiatan || ! $this->attendanceAuthorizationService->isSharedActivity($kegiatan)) {
+            abort(404, 'Kegiatan bukan Rabu Mengaji.');
+        }
+
+        $instruktur = $this->resolveInstruktur($user);
+        $this->attendanceAuthorizationService->authorizePertemuanAccess($pertemuan, $instruktur);
+
+        $anggotaList = $this->eligibleAnggotaQuery($kegiatan)
+            ->orderBy('kelompok_id')
+            ->orderBy('id')
+            ->get();
+
+        $existingAbsensi = AbsensiSik::where('pertemuan_id', $pertemuan->id)
+            ->pluck('status', 'anggota_periode_sik_id')
+            ->toArray();
+
+        return view('rabu-mengaji.input', compact(
+            'pertemuan',
+            'kegiatan',
+            'anggotaList',
+            'existingAbsensi'
+        ));
+    }
+
+    public function store(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+
+        $validated = $request->validate([
+            'pertemuan_id' => ['required', 'exists:pertemuan,id'],
+            'status' => ['required', 'array'],
+            'status.*' => ['required', Rule::in(['Hadir', 'Izin', 'Sakit', 'Alpha'])],
+            'keterangan' => ['nullable', 'array'],
+            'keterangan.*' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $pertemuan = Pertemuan::with(['kegiatan', 'kelompokHost'])->findOrFail($validated['pertemuan_id']);
+        $kegiatan = $pertemuan->kegiatan;
+
+        if (! $kegiatan instanceof Kegiatan || ! $this->attendanceAuthorizationService->isSharedActivity($kegiatan)) {
+            abort(404, 'Kegiatan bukan Rabu Mengaji.');
+        }
+
+        $instruktur = $this->resolveInstruktur($user);
+        $this->attendanceAuthorizationService->authorizePertemuanAccess($pertemuan, $instruktur);
+
+        $created = 0;
+        $skipped = 0;
+
+        DB::transaction(function () use ($validated, $pertemuan, $instruktur, &$created, &$skipped): void {
+            foreach ($validated['status'] as $anggotaId => $status) {
+                $anggotaId = (int) $anggotaId;
+
+                $anggota = AnggotaPeriodeSik::with(['kelompok', 'periode'])->find($anggotaId);
+                if (! $anggota instanceof AnggotaPeriodeSik) {
+                    $skipped++;
+
+                    continue;
+                }
+
+                $this->attendanceAuthorizationService->authorize($anggota, $pertemuan, $instruktur);
+
+                $existing = AbsensiSik::where('anggota_periode_sik_id', $anggota->id)
+                    ->where('pertemuan_id', $pertemuan->id)
+                    ->first();
+
+                if ($existing instanceof AbsensiSik) {
+                    $skipped++;
+
+                    continue;
+                }
+
+                $absensi = AbsensiSik::create([
+                    'anggota_periode_sik_id' => $anggota->id,
+                    'pertemuan_id' => $pertemuan->id,
+                    'status' => $status,
+                    'keterangan' => $validated['keterangan'][$anggotaId] ?? null,
+                    'metode_absensi' => 'Manual',
+                    'waktu_masuk' => null,
+                    'waktu_pulang' => null,
+                    'dicatat_oleh' => $instruktur?->id,
+                ]);
+
+                $this->attendanceRecapService->syncForAbsensi($absensi);
+
+                $created++;
+            }
+        });
+
+        if ($created > 0) {
+            return redirect()->route('rabu-mengaji.index')
+                ->with('success', "Kehadiran berhasil dicatat untuk {$created} santri.".($skipped > 0 ? " {$skipped} data dilewati (sudah ada atau tidak valid)." : ''));
+        }
+
+        return back()->withInput()->withErrors([
+            'pertemuan_id' => 'Tidak ada kehadiran yang berhasil dicatat. Semua data sudah ada atau tidak valid.',
+        ]);
+    }
+
     /** @return Builder<Kegiatan> */
-    private function mengajiActivities(): Builder
+    private function sharedActivities(): Builder
     {
-        return $this->scopeMengaji(Kegiatan::query());
+        return $this->attendanceAuthorizationService->scopeSharedActivity(Kegiatan::query());
     }
 
-    /** @param Builder<Kegiatan> $query */
-    private function scopeMengaji(Builder $query): Builder
+    /** @return Builder<AnggotaPeriodeSik> */
+    private function eligibleAnggotaQuery(Kegiatan $kegiatan): Builder
     {
-        return $query->whereRaw('LOWER(nama_kegiatan) LIKE ?', ['%mengaji%']);
+        return AnggotaPeriodeSik::with(['santri', 'kelompok', 'periode'])
+            ->where('status', 'Aktif')
+            ->where('periode_sik_id', $kegiatan->periode_sik_id)
+            ->whereHas(
+                'kelompok',
+                fn (Builder $query): mixed => $query
+                    ->where('status', 'Aktif')
+                    ->where('periode_sik_id', $kegiatan->periode_sik_id)
+            );
     }
 
-    private function isMengajiActivity(Kegiatan $kegiatan): bool
+    private function resolveInstruktur(User $user): ?InfrastrukturSik
     {
-        return str_contains(mb_strtolower((string) $kegiatan->nama_kegiatan), 'mengaji');
+        if ($user->role === UserRole::Admin) {
+            return null;
+        }
+
+        $instruktur = $user->infrastrukturSik;
+        abort_unless($instruktur instanceof InfrastrukturSik, 403, 'Data instruktur tidak ditemukan.');
+
+        return $instruktur;
     }
 
     /** @return Builder<AbsensiSik> */
     private function scopedAbsensiQuery(User $user): Builder
     {
         $query = AbsensiSik::query()
-            ->whereHas('pertemuan.kegiatan', fn (Builder $query): mixed => $this->scopeMengaji($query));
+            ->whereHas(
+                'pertemuan.kegiatan',
+                fn (Builder $query): mixed => $this->attendanceAuthorizationService->scopeSharedActivity($query)
+            );
 
-        if ($user->role === UserRole::Admin) {
-            return $query;
+        $instruktur = $this->resolveInstruktur($user);
+
+        if ($instruktur instanceof InfrastrukturSik) {
+            abort_unless(
+                $this->attendanceAuthorizationService->isActiveInstructor($instruktur),
+                403,
+                'Instruktur tidak aktif tidak berwenang melihat kehadiran.'
+            );
         }
 
-        $instructor = $user->infrastrukturSik;
-        abort_unless($instructor !== null, 403, 'Data instruktur tidak ditemukan.');
-
-        return $query->whereHas(
-            'anggotaPeriode.kelompok',
-            fn (Builder $query): mixed => $query->where('instruktur_id', $instructor->id)
-        );
+        return $query;
     }
 
     /**

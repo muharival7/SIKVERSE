@@ -74,6 +74,7 @@
                             };
                         @endphp
                         <span class="badge rounded-pill {{ $badge }}">{{ $statusKehadiran }}</span>
+                        <div class="small text-muted mt-1">Ambang {{ number_format($minimumPercentage, 1, ',', '.') }}% dari pertemuan Terlaksana.</div>
                     </div>
                 </div>
             </div>
@@ -87,8 +88,8 @@
             ['Total Izin', $item->jumlah_izin],
             ['Total Sakit', $item->jumlah_sakit],
             ['Total Alpha', $item->jumlah_alpha],
-            ['Total pertemuan diperhitungkan', $item->total_pertemuan],
-            ['Persentase kehadiran', number_format((float) $item->persentase_kehadiran, 1, ',', '.').'%'],
+            ['Total pertemuan Terlaksana', $item->total_pertemuan],
+            ['Persentase kehadiran', $item->persentase_display],
         ] as [$label, $value])
             <div class="col-6 col-md-4 col-xl-2">
                 <div class="card h-100 border-0 shadow-sm">

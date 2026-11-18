@@ -38,7 +38,9 @@
             <form action="{{ route('absensi-sik.store') }}" method="POST">
                 @csrf
                 <div class="row g-3">
-                    <div class="col-lg-4"><label class="form-label" for="pertemuan_id">Pertemuan</label><select class="form-select @error('pertemuan_id') is-invalid @enderror" id="pertemuan_id" name="pertemuan_id" required><option value="">Pilih pertemuan</option>@foreach ($pertemuan as $item)<option value="{{ $item->id }}" @selected((string) old('pertemuan_id') === (string) $item->id)>{{ $item->kegiatan?->nama_kegiatan }} · ke-{{ $item->pertemuan_ke }} · {{ $item->tanggal?->format('d/m/Y') }}</option>@endforeach</select>@error('pertemuan_id')<div class="invalid-feedback">{{ $message }}</div>@enderror</div>
+                    <div class="col-lg-4"><label class="form-label" for="pertemuan_id">Pertemuan</label><select class="form-select @error('pertemuan_id') is-invalid @enderror" id="pertemuan_id" name="pertemuan_id" required><option value="">Pilih pertemuan</option>@foreach ($pertemuan as $item)<option value="{{ $item->id }}" @selected((string) old('pertemuan_id') === (string) $item->id)>{{ $item->kegiatan?->nama_kegiatan }} · ke-{{ $item->pertemuan_ke }} · {{ $item->tanggal?->format('d/m/Y') }}</option>@endforeach</select>@error('pertemuan_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        <p class="form-text mt-1">Tanggal kehadiran otomatis mengikuti tanggal Pertemuan yang dipilih. Untuk mengubah tanggal pertemuan yang sudah memiliki catatan absensi, gunakan menu “Ubah Tanggal Pertemuan” pada daftar kehadiran.</p>
+                    </div>
                     <div class="col-lg-4"><label class="form-label" for="anggota_periode_sik_id">Santri</label><select class="form-select @error('anggota_periode_sik_id') is-invalid @enderror" id="anggota_periode_sik_id" name="anggota_periode_sik_id" required><option value="">Pilih santri</option>@foreach ($anggota as $member)<option value="{{ $member->id }}" @selected((string) old('anggota_periode_sik_id') === (string) $member->id)>{{ $member->santri?->nama }} · {{ $member->santri?->nomor_induk }} / {{ $member->kelompok?->nama_kelompok }}</option>@endforeach</select>@error('anggota_periode_sik_id')<div class="invalid-feedback">{{ $message }}</div>@enderror</div>
                     <div class="col-lg-4"><label class="form-label" for="new_status">Status</label><select class="form-select" id="new_status" name="status" required>@foreach (['Hadir', 'Izin', 'Sakit', 'Alpha', 'Tidak Lengkap'] as $status)<option value="{{ $status }}" @selected(old('status', 'Hadir') === $status)>{{ $status }}</option>@endforeach</select></div>
                     <div class="col-md-3"><label class="form-label" for="waktu_masuk">Waktu masuk</label><input class="form-control" type="time" id="waktu_masuk" name="waktu_masuk" value="{{ old('waktu_masuk') }}"></div>
@@ -63,7 +65,28 @@
                             <td><strong>{{ $item->anggotaPeriode?->santri?->nama ?? '—' }}</strong><span class="d-block small text-muted">{{ $item->pertemuan?->kegiatan?->nama_kegiatan ?? 'Kegiatan SIK' }}</span></td>
                             <td>{{ $item->anggotaPeriode?->kelompok?->nama_kelompok ?? '—' }}</td>
                             <td class="text-nowrap">Ke-{{ $item->pertemuan?->pertemuan_ke ?? '—' }}</td>
-                            <td class="text-nowrap">{{ $item->pertemuan?->tanggal?->format('d/m/Y') ?? '—' }}</td>
+                            <td class="text-nowrap">
+                                {{ $item->pertemuan?->tanggal?->format('d/m/Y') ?? '—' }}
+                                @if ($item->pertemuan)
+                                    <details class="attendance-date-change mt-1">
+                                        <summary>Ubah Tanggal Pertemuan</summary>
+                                        <form action="{{ route('absensi-sik.pertemuan.ubah-tanggal', $item->pertemuan) }}" method="POST" class="mt-2">
+                                            @csrf
+                                            <div class="small text-muted mb-1">Tanggal saat ini: {{ $item->pertemuan->tanggal->format('d/m/Y') }}</div>
+                                            <label class="visually-hidden" for="tanggal-baru-{{ $item->id }}">Tanggal baru pertemuan</label>
+                                            <input class="form-control form-control-sm" id="tanggal-baru-{{ $item->id }}" type="date" name="tanggal_baru" value="{{ old('tanggal_baru', $item->pertemuan->tanggal->toDateString()) }}" min="{{ $item->pertemuan->kegiatan?->periode?->tanggal_mulai?->toDateString() }}" max="{{ $item->pertemuan->kegiatan?->periode?->tanggal_selesai?->toDateString() }}" required>
+                                            <div class="form-check mt-1">
+                                                <input class="form-check-input" type="checkbox" name="konfirmasi" value="1" id="konfirmasi-tanggal-{{ $item->id }}" required>
+                                                <label class="form-check-label small" for="konfirmasi-tanggal-{{ $item->id }}">Saya yakin mengubah tanggal pertemuan ini</label>
+                                            </div>
+                                            <div class="d-flex gap-1 mt-2">
+                                                <button class="btn btn-sm btn-outline-primary" type="submit">Simpan</button>
+                                                <button class="btn btn-sm btn-outline-secondary" type="button" onclick="this.closest('details').open = false">Batal</button>
+                                            </div>
+                                        </form>
+                                    </details>
+                                @endif
+                            </td>
                             <td class="attendance-edit-cell">
                                 <form action="{{ route('absensi-sik.update', $item) }}" method="POST" class="attendance-edit-form">
                                     @csrf @method('PUT')

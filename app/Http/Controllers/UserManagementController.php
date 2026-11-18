@@ -9,6 +9,7 @@ use App\Models\BuktiKetidakhadiran;
 use App\Models\InfrastrukturSik;
 use App\Models\RiwayatAbsensi;
 use App\Models\User;
+use App\Services\AttendanceRecapService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,6 +22,8 @@ use Illuminate\View\View;
 
 class UserManagementController extends Controller
 {
+    public function __construct(private readonly AttendanceRecapService $attendanceRecapService) {}
+
     public function index(Request $request): View
     {
         $filters = $request->validate([
@@ -63,18 +66,19 @@ class UserManagementController extends Controller
                 $recaps = $user->infrastrukturSik?->kelompok
                     ->flatMap(fn ($group) => $group->anggota->flatMap->rekapKehadiran)
                     ?? collect();
-                $totalMeetings = (int) config('sik.attendance.meeting_count', 16);
-                $averagePresent = $recaps->isNotEmpty()
-                    ? round((float) $recaps->avg('jumlah_hadir'))
-                    : null;
+
+                $this->attendanceRecapService->prepareDisplay($recaps);
+                $recapsTersedia = $recaps->filter(fn ($recap): bool => (bool) $recap->tersedia);
 
                 $user->setAttribute('dosen_kelompok', $kelompokNames);
                 $user->setAttribute('recap_count', $recaps->count());
-                $user->setAttribute('average_present', $averagePresent);
-                $user->setAttribute('recap_meeting_count', $totalMeetings);
-                $user->setAttribute('average_percentage', $recaps->isNotEmpty()
-                    ? round(($averagePresent / max(1, $totalMeetings)) * 100, 1)
+                $user->setAttribute('average_present', $recapsTersedia->isNotEmpty()
+                    ? round((float) $recapsTersedia->avg('jumlah_hadir'))
                     : null);
+                $user->setAttribute('recap_meeting_count', $recapsTersedia->isNotEmpty()
+                    ? round((float) $recapsTersedia->avg('total_pertemuan'))
+                    : 0);
+                $user->setAttribute('average_percentage', $this->attendanceRecapService->averagePercentage($recaps));
 
                 return $user;
             });

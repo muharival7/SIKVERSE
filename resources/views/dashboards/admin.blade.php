@@ -35,8 +35,18 @@
                         <span class="sd-ring-caption">{{ number_format($adminStats['totalRekap']) }} rekap</span>
                     </div>
                     <div class="sd-status-summary" aria-label="Ringkasan kehadiran">
-                        <div class="sd-status-item"><span class="sd-status-name"><i class="sd-status-dot present" aria-hidden="true"></i>Hadir</span><strong>{{ number_format($adminAttendanceDistribution['hadir']) }}</strong></div>
-                        <div class="sd-status-item"><span class="sd-status-name"><i class="sd-status-dot absent" aria-hidden="true"></i>Belum hadir</span><strong>{{ number_format($adminAttendanceDistribution['tidakHadir']) }}</strong></div>
+                        @if ($adminStats['noMeetings'] ?? false)
+                            <div class="sd-status-item sd-status-empty">
+                                <span class="sd-status-name">{{ $adminStats['noMeetingsStatus'] ?? 'Belum Ada Pertemuan Terlaksana' }}</span>
+                                <strong>—</strong>
+                            </div>
+                        @else
+                            <div class="sd-status-item"><span class="sd-status-name"><i class="sd-status-dot present" aria-hidden="true"></i>Hadir</span><strong>{{ number_format($adminAttendanceDistribution['hadir']) }}</strong></div>
+                            <div class="sd-status-item"><span class="sd-status-name"><i class="sd-status-dot permission" aria-hidden="true"></i>Izin</span><strong>{{ number_format($adminAttendanceDistribution['izin']) }}</strong></div>
+                            <div class="sd-status-item"><span class="sd-status-name"><i class="sd-status-dot sick" aria-hidden="true"></i>Sakit</span><strong>{{ number_format($adminAttendanceDistribution['sakit']) }}</strong></div>
+                            <div class="sd-status-item"><span class="sd-status-name"><i class="sd-status-dot absent" aria-hidden="true"></i>Alpha</span><strong>{{ number_format($adminAttendanceDistribution['alpha']) }}</strong></div>
+                            <div class="sd-status-item"><span class="sd-status-name"><i class="sd-status-dot incomplete" aria-hidden="true"></i>Belum Lengkap</span><strong>{{ number_format($adminAttendanceDistribution['tidakLengkap']) }}</strong></div>
+                        @endif
                     </div>
                 </div>
                 <div class="d-flex justify-content-end mt-3"><a class="sd-text-link" href="{{ route('rekap-kehadiran-sik.index') }}">Buka rekap absensi <x-sik-icon name="arrow-right" /></a></div>

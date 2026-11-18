@@ -286,11 +286,11 @@
 
                                         <span>
                                             {{ $user->average_present }}/{{ $user->recap_meeting_count }}
-                                            pertemuan
+                                            Terlaksana
                                         </span>
 
                                         <span>
-                                            {{ number_format($user->average_percentage, 1) }}%
+                                            {{ $user->average_percentage === null ? '—' : number_format($user->average_percentage, 1, ',', '.').'%' }}
                                         </span>
 
                                     </div>

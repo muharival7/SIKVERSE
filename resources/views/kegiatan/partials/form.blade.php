@@ -27,9 +27,11 @@
     <div class="col-md-6">
         <label class="form-label" for="kelompok_id">Kelompok <span class="text-muted">(wajib untuk kegiatan kelas)</span></label>
         <select class="form-select @error('kelompok_id') is-invalid @enderror" id="kelompok_id" name="kelompok_id">
-            <option value="">Tidak terikat pada kelompok</option>
+            <option value="">Semua Kelompok</option>
             @foreach ($kelompok as $item)
-                <option value="{{ $item->id }}" @selected((string) old('kelompok_id', $kegiatan?->kelompok_id) === (string) $item->id)>{{ $item->nama_kelompok }} — {{ $item->periode?->nama_periode }}</option>
+                <option value="{{ $item->id }}"
+                        data-periode="{{ $item->periode_sik_id }}"
+                        @selected((string) old('kelompok_id', $kegiatan?->kelompok_id) === (string) $item->id)>{{ $item->nama_kelompok }} — {{ $item->periode?->nama_periode }}</option>
             @endforeach
         </select>
         @error('kelompok_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
@@ -49,3 +51,37 @@
         @error('keterangan')<div class="invalid-feedback">{{ $message }}</div>@enderror
     </div>
 </div>
+
+@pushOnce('scripts')
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const periodeSelect = document.getElementById('periode_sik_id');
+        const kelompokSelect = document.getElementById('kelompok_id');
+
+        if (!periodeSelect || !kelompokSelect) {
+            return;
+        }
+
+        function sesuaikanKelompok() {
+            const periodeTerpilih = periodeSelect.value;
+
+            Array.from(kelompokSelect.options).forEach(function (option) {
+                if (!option.value) {
+                    return;
+                }
+
+                option.hidden = periodeTerpilih !== '' && option.dataset.periode !== periodeTerpilih;
+                option.disabled = option.hidden;
+            });
+
+            const selected = kelompokSelect.options[kelompokSelect.selectedIndex];
+            if (selected && selected.hidden) {
+                kelompokSelect.value = '';
+            }
+        }
+
+        periodeSelect.addEventListener('change', sesuaikanKelompok);
+        sesuaikanKelompok();
+    });
+</script>
+@endpushOnce

@@ -121,7 +121,7 @@ test('the admin data-dosen page keeps attendance data without the header menu an
         ->assertSee('1 dari 1 catatan hadir')
         ->assertSee('Detail Riwayat');
 
-    expect($response->getContent())->not->toContain('href="'.route('rekap-absensi-dosen.index').'"');
+    expect($response->getContent())->toContain('href="'.route('rekap-absensi-dosen.index').'"');
 
     $this->actingAs($fixture['instructorUser'])
         ->get(route('rekap-absensi-dosen.index'))

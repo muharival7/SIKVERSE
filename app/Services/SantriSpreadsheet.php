@@ -84,7 +84,7 @@ class SantriSpreadsheet
                             break;
                         }
 
-                        $candidateColumns = $this->headerColumns($cells);
+                        $candidateColumns = $this->headerColumns($cells, true);
 
                         if (in_array('nomor_induk', $candidateColumns, true)
                             && in_array('nama', $candidateColumns, true)
@@ -193,16 +193,40 @@ class SantriSpreadsheet
             $headerCells .= '<c r="'.$column.'1" s="1" t="inlineStr"><is><t>'.htmlspecialchars($header, ENT_XML1 | ENT_QUOTES, 'UTF-8').'</t></is></c>';
         }
 
-        $archive->addFromString('[Content_Types].xml', $this->contentTypesXml());
-        $archive->addFromString('_rels/.rels', $this->packageRelationshipsXml());
-        $archive->addFromString('xl/workbook.xml', $this->workbookXml());
-        $archive->addFromString('xl/_rels/workbook.xml.rels', $this->workbookRelationshipsXml());
-        $archive->addFromString('xl/styles.xml', $this->stylesXml());
-        $archive->addFromString('xl/worksheets/sheet1.xml', $this->worksheetXml($headerCells));
-        $archive->close();
+        $parts = [
+            '[Content_Types].xml' => $this->contentTypesXml(),
+            '_rels/.rels' => $this->packageRelationshipsXml(),
+            'xl/workbook.xml' => $this->workbookXml(),
+            'xl/_rels/workbook.xml.rels' => $this->workbookRelationshipsXml(),
+            'xl/styles.xml' => $this->stylesXml(),
+            'xl/worksheets/sheet1.xml' => $this->worksheetXml($headerCells),
+        ];
 
-        $contents = file_get_contents($temporaryPath);
-        @unlink($temporaryPath);
+        $closed = false;
+
+        try {
+            foreach ($parts as $partName => $partContents) {
+                if (! $archive->addFromString($partName, $partContents)) {
+                    throw new RuntimeException('Template Excel tidak dapat disusun saat ini.');
+                }
+            }
+
+            $closed = $archive->close();
+
+            if (! $closed) {
+                throw new RuntimeException('Template Excel tidak dapat diselesaikan saat ini.');
+            }
+
+            // Arsip sudah ditutup sebelum file sementara dihapus. Seluruh binary
+            // kini berada di memori dan aman dikirim sebagai respons download.
+            $contents = file_get_contents($temporaryPath);
+        } finally {
+            if (! $closed) {
+                $archive->close();
+            }
+
+            @unlink($temporaryPath);
+        }
 
         if (! is_string($contents)) {
             throw new RuntimeException('Template Excel tidak dapat dibaca saat ini.');
@@ -253,7 +277,7 @@ class SantriSpreadsheet
      * @param  array<int, string>  $cells
      * @return array<int, string>
      */
-    private function headerColumns(array $cells): array
+    private function headerColumns(array $cells, bool $strictDuplicate = false): array
     {
         $aliases = $this->headerAliases();
         $columns = [];
@@ -273,7 +297,13 @@ class SantriSpreadsheet
             }
 
             if (isset($fields[$field])) {
-                throw new RuntimeException("Kolom {$field} muncul lebih dari satu kali pada header Excel.");
+                if ($strictDuplicate) {
+                    throw new RuntimeException("Kolom {$field} muncul lebih dari satu kali pada header Excel.");
+                }
+
+                // Baris data yang kebetulan memuat dua alias sama tidak boleh
+                // menggagalkan seluruh berkas; alias pertama yang dipakai.
+                continue;
             }
 
             $fields[$field] = true;

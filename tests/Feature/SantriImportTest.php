@@ -7,6 +7,7 @@ use App\Models\Kelompok;
 use App\Models\PeriodeSik;
 use App\Models\Santri;
 use App\Models\User;
+use App\Services\SantriSpreadsheet;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
@@ -366,4 +367,200 @@ test('import rejects non-XLSX files, files over 10 MB, and workbooks over the ro
     $this->post(route('santris.import.preview'), ['file' => makeSantriImportUpload($tooManyRows)])
         ->assertSessionHasErrors('file');
     expect(Santri::query()->count())->toBe(0);
+});
+
+test('template XLSX memuat semua komponen Office Open XML yang wajib dan valid', function () {
+    $admin = User::factory()->create(['role' => UserRole::Admin]);
+
+    $response = $this->actingAs($admin)->get(route('santris.import.template'));
+
+    $response->assertOk()
+        ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        ->assertHeader('content-disposition', 'attachment; filename=template-data-santri.xlsx');
+
+    $contents = $response->streamedContent();
+
+    expect($contents)->toStartWith('PK')
+        ->and(str_contains($contents, '<!DOCTYPE html>'))->toBeFalse();
+
+    $path = tempnam(sys_get_temp_dir(), 'sik-template-audit-');
+    file_put_contents($path, $contents);
+
+    try {
+        $zip = new ZipArchive;
+        expect($zip->open($path))->toBeTrue();
+
+        $requiredParts = [
+            '[Content_Types].xml',
+            '_rels/.rels',
+            'xl/workbook.xml',
+            'xl/_rels/workbook.xml.rels',
+            'xl/worksheets/sheet1.xml',
+        ];
+
+        foreach ($requiredParts as $part) {
+            expect($zip->locateName($part))->not->toBeFalse()
+                ->and($zip->getFromName($part))->toBeString();
+        }
+
+        libxml_use_internal_errors(true);
+
+        foreach ($requiredParts as $part) {
+            $document = new DOMDocument;
+            expect($document->loadXML((string) $zip->getFromName($part), LIBXML_NONET))->toBeTrue()
+                ->and(libxml_get_errors())->toBe([]);
+            libxml_clear_errors();
+        }
+
+        $contentTypes = (string) $zip->getFromName('[Content_Types].xml');
+        expect($contentTypes)->toContain('spreadsheetml.sheet.main+xml')
+            ->toContain('spreadsheetml.worksheet+xml')
+            ->toContain('spreadsheetml.styles+xml')
+            ->toContain('relationships+xml');
+
+        $packageRels = simplexml_load_string((string) $zip->getFromName('_rels/.rels'));
+        expect($packageRels)->toBeInstanceOf(SimpleXMLElement::class);
+        $packageRels->registerXPathNamespace('p', 'http://schemas.openxmlformats.org/package/2006/relationships');
+        $officeDocument = $packageRels->xpath('/p:Relationships/p:Relationship[@Id="rId1"]');
+        expect($officeDocument)->toHaveCount(1)
+            ->and((string) $officeDocument[0]['Target'])->toBe('xl/workbook.xml');
+
+        $workbookRels = simplexml_load_string((string) $zip->getFromName('xl/_rels/workbook.xml.rels'));
+        expect($workbookRels)->toBeInstanceOf(SimpleXMLElement::class);
+        $workbookRels->registerXPathNamespace('p', 'http://schemas.openxmlformats.org/package/2006/relationships');
+        $worksheetRel = $workbookRels->xpath('/p:Relationships/p:Relationship[@Id="rId1"]');
+        $stylesRel = $workbookRels->xpath('/p:Relationships/p:Relationship[@Id="rId2"]');
+        expect($worksheetRel)->toHaveCount(1)
+            ->and((string) $worksheetRel[0]['Target'])->toBe('worksheets/sheet1.xml')
+            ->and($stylesRel)->toHaveCount(1)
+            ->and((string) $stylesRel[0]['Type'])->toEndWith('/styles')
+            ->and($zip->locateName('xl/'.$worksheetRel[0]['Target']))->not->toBeFalse();
+
+        $workbookDocument = new DOMDocument;
+        $workbookDocument->loadXML((string) $zip->getFromName('xl/workbook.xml'), LIBXML_NONET);
+        $workbookXpath = new DOMXPath($workbookDocument);
+        $workbookXpath->registerNamespace('m', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+        $workbookXpath->registerNamespace('r', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships');
+        $sheet = $workbookXpath->query('/m:workbook/m:sheets/m:sheet')->item(0);
+        expect($sheet)->not->toBeNull()
+            ->and($sheet->getAttribute('name'))->toBe('Data Santri')
+            ->and($sheet->getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id'))->toBe('rId1');
+
+        $sheetDocument = new DOMDocument;
+        $sheetDocument->loadXML((string) $zip->getFromName('xl/worksheets/sheet1.xml'), LIBXML_NONET);
+        $sheetXpath = new DOMXPath($sheetDocument);
+        $sheetXpath->registerNamespace('m', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+        $headers = [];
+
+        foreach ($sheetXpath->query('/m:worksheet/m:sheetData/m:row[@r="1"]/m:c/m:is/m:t') as $node) {
+            $headers[] = $node->nodeValue;
+        }
+
+        expect($headers)->toBe([
+            'Nomor Induk/NIM',
+            'Nama Santri',
+            'Jenis Kelamin',
+            'Program Studi',
+            'Kelompok',
+            'Periode',
+            'Status Santri',
+            'Email (opsional)',
+        ]);
+
+        $zip->close();
+    } finally {
+        @unlink($path);
+    }
+});
+
+test('template XLSX dapat dibaca ulang oleh parser import Santri', function () {
+    $admin = User::factory()->create(['role' => UserRole::Admin]);
+    $contents = $this->actingAs($admin)->get(route('santris.import.template'))->streamedContent();
+
+    $templatePath = tempnam(sys_get_temp_dir(), 'sik-template-source-');
+    $filledPath = tempnam(sys_get_temp_dir(), 'sik-template-filled-');
+    file_put_contents($templatePath, $contents);
+
+    try {
+        $source = new ZipArchive;
+        expect($source->open($templatePath))->toBeTrue();
+
+        $originalSheet = (string) $source->getFromName('xl/worksheets/sheet1.xml');
+        $dataRow = '<row r="2">'
+            .'<c r="A2" t="inlineStr"><is><t>001234</t></is></c>'
+            .'<c r="B2" t="inlineStr"><is><t>Alya Rahma</t></is></c>'
+            .'<c r="C2" t="inlineStr"><is><t>Perempuan</t></is></c>'
+            .'<c r="D2" t="inlineStr"><is><t>Sistem Informasi</t></is></c>'
+            .'<c r="E2" t="inlineStr"><is><t>Teknologi</t></is></c>'
+            .'<c r="F2" t="inlineStr"><is><t>ganjil_2026</t></is></c>'
+            .'<c r="G2" t="inlineStr"><is><t>Aktif</t></is></c>'
+            .'<c r="H2" t="inlineStr"><is><t>alya@example.test</t></is></c>'
+            .'</row>';
+
+        $filledSheet = str_replace('</sheetData>', $dataRow.'</sheetData>', $originalSheet);
+        expect($filledSheet)->not->toBe($originalSheet);
+
+        $target = new ZipArchive;
+        expect($target->open($filledPath, ZipArchive::CREATE | ZipArchive::OVERWRITE))->toBeTrue();
+
+        for ($index = 0; $index < $source->numFiles; $index++) {
+            $name = (string) $source->getNameIndex($index);
+            $part = $name === 'xl/worksheets/sheet1.xml'
+                ? $filledSheet
+                : (string) $source->getFromIndex($index);
+            expect($target->addFromString($name, $part))->toBeTrue();
+        }
+
+        expect($target->close())->toBeTrue();
+        $source->close();
+
+        $rows = app(SantriSpreadsheet::class)->read($filledPath);
+
+        expect($rows)->toHaveCount(1)
+            ->and($rows[0]['sheet'])->toBe('Data Santri')
+            ->and($rows[0]['nomor_induk'])->toBe('001234')
+            ->and($rows[0]['nama'])->toBe('Alya Rahma')
+            ->and($rows[0]['jenis_kelamin'])->toBe('Perempuan')
+            ->and($rows[0]['program_studi'])->toBe('Sistem Informasi')
+            ->and($rows[0]['kelompok'])->toBe('Teknologi')
+            ->and($rows[0]['periode'])->toBe('ganjil_2026')
+            ->and($rows[0]['status'])->toBe('Aktif')
+            ->and($rows[0]['email'])->toBe('alya@example.test');
+    } finally {
+        @unlink($templatePath);
+        @unlink($filledPath);
+    }
+});
+
+test('proses download template tidak menghasilkan output sebelum binary XLSX', function () {
+    expect(function_exists('exec'))->toBeTrue();
+
+    $scriptPath = tempnam(sys_get_temp_dir(), 'sik-template-stream-script-');
+    $outputPath = tempnam(sys_get_temp_dir(), 'sik-template-stream-output-');
+
+    file_put_contents($scriptPath, sprintf(
+        "<?php\nob_start();\nrequire %s;\n\$app = require %s;\n\$app->make(\\Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap();\n\$response = \$app->make(\\App\\Http\\Controllers\\SantriController::class)->downloadImportTemplate(\$app->make(\\App\\Services\\SantriSpreadsheet::class));\n\$response->sendContent();\nfile_put_contents(%s, ob_get_clean());\n",
+        var_export(base_path('vendor/autoload.php'), true),
+        var_export(base_path('bootstrap/app.php'), true),
+        var_export($outputPath, true)
+    ));
+
+    try {
+        exec(escapeshellarg(PHP_BINARY).' '.escapeshellarg($scriptPath).' 2>&1', $output, $exitCode);
+
+        expect($exitCode)->toBe(0);
+
+        $streamed = (string) file_get_contents($outputPath);
+
+        expect(substr($streamed, 0, 2))->toBe('PK')
+            ->and(str_contains($streamed, '<!DOCTYPE html>'))->toBeFalse();
+
+        $archive = new ZipArchive;
+        expect($archive->open($outputPath))->toBeTrue()
+            ->and($archive->getFromName('xl/workbook.xml'))->toContain('Data Santri');
+        $archive->close();
+    } finally {
+        @unlink($scriptPath);
+        @unlink($outputPath);
+    }
 });

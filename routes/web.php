@@ -1,4 +1,3 @@
-
 <?php
 
 use App\Http\Controllers\AbsensiSikController;
@@ -14,6 +13,7 @@ use App\Http\Controllers\PeriodeSikController;
 use App\Http\Controllers\PertemuanController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RabuMengajiController;
+use App\Http\Controllers\RabuMengajiImportController;
 use App\Http\Controllers\RekapAbsensiDosenController;
 use App\Http\Controllers\RekapKehadiranSikController;
 use App\Http\Controllers\SantriController;
@@ -182,6 +182,7 @@ Route::middleware($authenticatedMiddleware)->group(function (): void {
         // Manajemen Sertifikat
         Route::resource('sertifikat-sik', SertifikatSikController::class)
             ->except(['show']);
+
     });
 
     // ==================================================
@@ -193,6 +194,10 @@ Route::middleware($authenticatedMiddleware)->group(function (): void {
         Route::resource('absensi-sik', AbsensiSikController::class)
             ->only(['index', 'store', 'update']);
 
+        Route::post('/absensi-sik/pertemuan/{pertemuan}/ubah-tanggal', [AbsensiSikController::class, 'ubahTanggalPertemuan'])
+            ->whereNumber('pertemuan')
+            ->name('absensi-sik.pertemuan.ubah-tanggal');
+
         Route::get('/rekap-kehadiran-sik', [RekapKehadiranSikController::class, 'index'])
             ->name('rekap-kehadiran-sik.index');
         Route::get('/rekap-kehadiran-sik/export', [RekapKehadiranSikController::class, 'export'])
@@ -200,12 +205,29 @@ Route::middleware($authenticatedMiddleware)->group(function (): void {
         Route::get('/rekap-kehadiran-sik/{rekapKehadiranSik}', [RekapKehadiranSikController::class, 'show'])
             ->whereNumber('rekapKehadiranSik')
             ->name('rekap-kehadiran-sik.show');
+    });
 
+    Route::middleware(['auth', 'password.changed', 'role:admin,infrastruktur_sik'])->group(function (): void {
         Route::get('/rabu-mengaji', [RabuMengajiController::class, 'index'])
             ->name('rabu-mengaji.index');
         Route::get('/rabu-mengaji/{absensiSik}', [RabuMengajiController::class, 'show'])
             ->whereNumber('absensiSik')
             ->name('rabu-mengaji.show');
+        Route::get('/rabu-mengaji/{pertemuan}/input', [RabuMengajiController::class, 'edit'])
+            ->whereNumber('pertemuan')
+            ->name('rabu-mengaji.input');
+        Route::post('/rabu-mengaji', [RabuMengajiController::class, 'store'])
+            ->name('rabu-mengaji.store');
+        Route::get('/rabu-mengaji/import', [RabuMengajiImportController::class, 'importForm'])
+            ->name('rabu-mengaji.import');
+        Route::post('/rabu-mengaji/import/preview', [RabuMengajiImportController::class, 'previewImport'])
+            ->name('rabu-mengaji.import.preview');
+        Route::post('/rabu-mengaji/import/recheck', [RabuMengajiImportController::class, 'recheckImport'])
+            ->name('rabu-mengaji.import.recheck');
+        Route::post('/rabu-mengaji/import/commit', [RabuMengajiImportController::class, 'commitImport'])
+            ->name('rabu-mengaji.import.commit');
+        Route::get('/rabu-mengaji/import/template', [RabuMengajiImportController::class, 'downloadTemplate'])
+            ->name('rabu-mengaji.import.template');
     });
 
     Route::middleware('role:infrastruktur_sik')->group(function (): void {

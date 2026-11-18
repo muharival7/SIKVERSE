@@ -50,7 +50,9 @@
             @forelse ($rekap as $item)
                 @php
                     $statusKehadiran = $item->status_kehadiran;
-                    $badgeKehadiran = $statusKehadiran === 'Memenuhi' ? 'bg-success' : 'bg-warning text-dark';
+                    $badgeKehadiran = $item->memenuhi
+                        ? 'bg-success'
+                        : ($statusKehadiran === $noMeetingsStatus ? 'bg-secondary' : 'bg-warning text-dark');
                 @endphp
                 <div class="col-12 col-md-6 col-xl-4">
                     <div class="card border-0 shadow-sm h-100">
@@ -62,8 +64,16 @@
                                 </div>
                                 <span class="badge {{ $badgeKehadiran }}">{{ $statusKehadiran }}</span>
                             </div>
-                            <div class="mt-3">Hadir <strong>{{ $item->jumlah_hadir }} dari {{ $item->total_pertemuan }}</strong> pertemuan</div>
-                            <div class="text-muted">{{ number_format((float) $item->persentase_kehadiran, 2) }}% · minimal {{ config('sik.attendance.minimum_present', 14) }} kali hadir</div>
+                            <div class="mt-3">
+                                {{ $item->total_pertemuan }} pertemuan Terlaksana ·
+                                <strong>{{ $item->jumlah_hadir }} Hadir</strong>,
+                                {{ $item->jumlah_izin }} Izin,
+                                {{ $item->jumlah_sakit }} Sakit,
+                                {{ $item->jumlah_alpha }} Alpha
+                            </div>
+                            <div class="text-muted">
+                                {{ $item->persentase_display }} · ambang {{ number_format($minimumPercentage, 1, ',', '.') }}%
+                            </div>
                         </div>
                     </div>
                 </div>

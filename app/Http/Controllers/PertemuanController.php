@@ -5,21 +5,24 @@ namespace App\Http\Controllers;
 use App\Models\InfrastrukturSik;
 use App\Models\Kegiatan;
 use App\Models\Kelompok;
+use App\Models\PeriodeSik;
 use App\Models\Pertemuan;
+use App\Services\AttendanceAuthorizationService;
 use App\Services\AttendanceRecapService;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class PertemuanController extends Controller
 {
-    public function __construct(private readonly AttendanceRecapService $attendanceRecapService)
-    {
-    }
+    public function __construct(
+        private readonly AttendanceRecapService $attendanceRecapService,
+        private readonly AttendanceAuthorizationService $attendanceAuthorizationService
+    ) {}
 
     public function index(): View
     {
@@ -50,7 +53,7 @@ class PertemuanController extends Controller
     {
         return view('pertemuan.edit', [
             'pertemuan' => $pertemuan,
-            ...$this->formOptions(),
+            ...$this->formOptions($pertemuan),
         ]);
     }
 
@@ -110,12 +113,36 @@ class PertemuanController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function formOptions(): array
+    private function formOptions(?Pertemuan $pertemuan = null): array
     {
+        $selectedKelompokId = (int) old('kelompok_host_id', $pertemuan?->kelompok_host_id ?? 0);
+
+        $kelompok = Kelompok::with('periode')
+            ->where('status', 'Aktif')
+            ->orderBy('nama_kelompok')
+            ->get();
+
+        if ($selectedKelompokId > 0 && ! $kelompok->contains('id', $selectedKelompokId)) {
+            $selected = Kelompok::with('periode')->find($selectedKelompokId);
+
+            if ($selected instanceof Kelompok) {
+                $kelompok->push($selected);
+                $kelompok = $kelompok->sortBy('nama_kelompok')->values();
+            }
+        }
+
+        $daftarKegiatan = Kegiatan::with('periode')->orderBy('nama_kegiatan')->get();
+        $sharedActivityIds = $daftarKegiatan
+            ->filter(fn (Kegiatan $activity): bool => $this->attendanceAuthorizationService->isSharedActivity($activity))
+            ->pluck('id')
+            ->map(fn (int $id): int => $id)
+            ->all();
+
         return [
-            'kegiatan' => Kegiatan::with('periode')->orderBy('nama_kegiatan')->get(),
+            'kegiatan' => $daftarKegiatan,
             'instruktur' => InfrastrukturSik::orderBy('nama')->get(),
-            'kelompok' => Kelompok::with('periode')->orderBy('nama_kelompok')->get(),
+            'kelompok' => $kelompok,
+            'sharedActivityIds' => $sharedActivityIds,
         ];
     }
 
@@ -148,15 +175,54 @@ class PertemuanController extends Controller
             'keterangan' => ['nullable', 'string'],
         ]);
 
-        if (filled($validated['kelompok_host_id'] ?? null)) {
-            $kegiatan = Kegiatan::findOrFail($validated['kegiatan_id']);
-            $kelompok = Kelompok::findOrFail($validated['kelompok_host_id']);
+        $kegiatan = Kegiatan::with('periode')->findOrFail($validated['kegiatan_id']);
+        $kelompokHostId = $validated['kelompok_host_id'] ?? null;
 
-            if ($kegiatan->periode_sik_id !== $kelompok->periode_sik_id) {
+        if ($this->attendanceAuthorizationService->isSharedActivity($kegiatan)) {
+            if ($kegiatan->kelompok_id !== null || $kelompokHostId !== null) {
+                throw ValidationException::withMessages([
+                    'kelompok_host_id' => 'Pertemuan Rabu Mengaji berlaku untuk semua kelompok dan tidak boleh memiliki kelompok host.',
+                ]);
+            }
+
+            $validated['kelompok_host_id'] = null;
+        } elseif ($kelompokHostId !== null) {
+            $kelompok = Kelompok::findOrFail($kelompokHostId);
+
+            if ((int) $kelompok->periode_sik_id !== (int) $kegiatan->periode_sik_id) {
                 throw ValidationException::withMessages([
                     'kelompok_host_id' => 'Kelompok host harus berasal dari periode kegiatan.',
                 ]);
             }
+
+            if ($kegiatan->kelompok_id !== null && (int) $kelompokHostId !== (int) $kegiatan->kelompok_id) {
+                throw ValidationException::withMessages([
+                    'kelompok_host_id' => 'Kelompok host harus sama dengan kelompok kegiatan.',
+                ]);
+            }
+        } elseif ($kegiatan->kelompok_id !== null) {
+            $validated['kelompok_host_id'] = $kegiatan->kelompok_id;
+        }
+
+        $validated['kelompok_host_id'] = isset($validated['kelompok_host_id'])
+            ? (int) $validated['kelompok_host_id']
+            : null;
+
+        $periode = $kegiatan->periode;
+
+        if (! $periode instanceof PeriodeSik) {
+            throw ValidationException::withMessages([
+                'kegiatan_id' => 'Kegiatan harus memiliki periode SIK yang terdefinisi.',
+            ]);
+        }
+
+        $tanggalMulai = $periode->tanggal_mulai->toDateString();
+        $tanggalSelesai = $periode->tanggal_selesai->toDateString();
+
+        if ($validated['tanggal'] < $tanggalMulai || $validated['tanggal'] > $tanggalSelesai) {
+            throw ValidationException::withMessages([
+                'tanggal' => 'Tanggal pertemuan harus berada dalam rentang periode "'.$periode->nama_periode.'" ('.$tanggalMulai.' hingga '.$tanggalSelesai.').',
+            ]);
         }
 
         return $validated;

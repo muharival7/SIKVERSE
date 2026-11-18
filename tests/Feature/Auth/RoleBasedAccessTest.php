@@ -195,7 +195,9 @@ test('an account with an unknown role sees safe navigation without privileged me
         ->assertOk()
         ->assertDontSee('Data Santri')
         ->assertDontSee('Data Dosen')
-        ->assertDontSee('Rekap Absensi');
+        ->assertDontSee('Rekap Absensi')
+        ->assertDontSee('Rekap Absensi Dosen')
+        ->assertDontSee('Rabu Mengaji');
 });
 
 test('admin navigation only shows admin menu links', function () {
@@ -220,5 +222,32 @@ test('instructor navigation only shows instructor menu links', function () {
         ->assertSee('Nilai')
         ->assertSee('Kelompok Saya')
         ->assertDontSee('Data Santri')
-        ->assertDontSee('Data Dosen');
+        ->assertDontSee('Data Dosen')
+        ->assertDontSee('Rekap Absensi Dosen')
+        ->assertSee('Rabu Mengaji');
 });
+
+test('admin navigation shows rekap absensi dosen menu', function () {
+    $user = User::factory()->create(['role' => UserRole::Admin]);
+
+    $this->actingAs($user)
+        ->get(route('dashboard.admin'))
+        ->assertOk()
+        ->assertSee('Rekap Absensi Dosen')
+        ->assertSee('Rabu Mengaji');
+});
+
+test('santri and ka lab mutu navigation does not show admin menu links', function (UserRole $role) {
+    $user = User::factory()->create(['role' => $role]);
+
+    $this->actingAs($user)
+        ->get(route('profile.edit'))
+        ->assertOk()
+        ->assertDontSee('Data Santri')
+        ->assertDontSee('Data Dosen')
+        ->assertDontSee('Rekap Absensi Dosen')
+        ->assertDontSee('Rabu Mengaji');
+})->with([
+    'santri' => [UserRole::Santri],
+    'ka lab mutu' => [UserRole::KaLabMutu],
+]);

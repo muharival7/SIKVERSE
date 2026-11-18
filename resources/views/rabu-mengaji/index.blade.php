@@ -10,18 +10,20 @@
                 Kehadiran kegiatan
             </span>
             <h1 class="h2 fw-bold mt-1 mb-1">Rabu Mengaji</h1>
-            <p class="text-muted mb-0">
-                Data diambil dari kegiatan, pertemuan, dan pencatatan absensi santri yang sudah ada.
-            </p>
-        </div>
+        <p class="text-muted mb-0">
+            Data diambil dari kegiatan, pertemuan, dan pencatatan absensi santri yang sudah ada.
+        </p>
     </div>
 
-    @if ($kegiatan->isEmpty())
-        <div class="alert alert-info">
-            Belum ada kegiatan dengan nama Rabu Mengaji pada database ini.
-            Buat kegiatan tersebut melalui menu Kegiatan, lalu tambahkan pertemuan dan absensi santri seperti biasa.
-        </div>
-    @endif
+    <div class="d-flex flex-wrap gap-2 mt-3">
+        <a class="btn btn-outline-primary" href="{{ route('kegiatan.index') }}">
+            Buka Data Kegiatan
+        </a>
+        <a class="btn btn-primary" href="{{ route('rabu-mengaji.import') }}">
+            Import Excel
+        </a>
+    </div>
+    </div>
 
     @php
         $totalPertemuan = (int) ($summary->total_pertemuan ?? 0);
@@ -102,7 +104,7 @@
                         <th>No</th>
                         <th>Nama Santri</th>
                         <th>Nomor Induk</th>
-                        <th>Kelompok</th>
+                        <th>Kelompok Asal</th>
                         <th>Tanggal Pelaksanaan</th>
                         <th>Kegiatan</th>
                         <th>Status</th>
@@ -132,6 +134,12 @@
                                    href="{{ route('rabu-mengaji.show', $catatan) }}">
                                     Detail
                                 </a>
+                                @if ($catatan->pertemuan?->status !== 'Dibatalkan')
+                                    <a class="btn btn-sm btn-success ms-1"
+                                       href="{{ route('rabu-mengaji.input', $catatan->pertemuan) }}">
+                                        Input Kehadiran
+                                    </a>
+                                @endif
                             </td>
                         </tr>
                     @empty

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\AttendanceRecapService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -52,15 +53,20 @@ class KelulusanSik extends Model
         );
     }
 
+    /**
+     * Kelayakan kehadiran ditentukan sepenuhnya oleh AttendanceRecapService.
+     *
+     * Scope ini tidak menghitung ulang ambang batas; ia hanya membatasi baris
+     * kelulusan pada anggota yang dilaporkan memenuhi oleh service. Service
+     * diambil dari container karena scope Eloquent tidak dapat menerima
+     * constructor injection.
+     */
     public function scopeMeetsAttendanceThreshold(Builder $query): Builder
     {
-        $minimumHadir = (int) config('sik.attendance.minimum_present');
+        $eligibleAnggotaIds = app(AttendanceRecapService::class)
+            ->eligibleAnggotaIds()
+            ->all();
 
-        return $query->whereHas(
-            'anggotaPeriodeSik.absensi',
-            fn (Builder $absensiQuery) => $absensiQuery->where('status', 'Hadir'),
-            '>=',
-            $minimumHadir
-        );
+        return $query->whereIn('anggota_periode_sik_id', $eligibleAnggotaIds);
     }
 }

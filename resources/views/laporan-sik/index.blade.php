@@ -103,8 +103,13 @@
                         <th>Nomor Induk</th>
                         <th>Periode</th>
                         <th>Kelompok</th>
-                        <th>Jumlah Hadir</th>
-                        <th>Minimal Hadir</th>
+                        <th>Terlaksana</th>
+                        <th>Hadir</th>
+                        <th>Izin</th>
+                        <th>Sakit</th>
+                        <th>Alpha</th>
+                        <th>Persentase</th>
+                        <th>Status Kehadiran</th>
                         <th>Status Kelulusan</th>
                         <th>Alasan Evaluasi</th>
                         <th>Keterangan</th>
@@ -117,21 +122,9 @@
                             $anggota = $detail->anggotaPeriodeSik;
                             $santri = $anggota?->santri;
 
-                            $jumlahHadir = $anggota
-                                ? $anggota->absensi->where('status', 'Hadir')->count()
-                                : 0;
-
+                            $attendance = $detail->attendance;
                             $status = $detail->status;
-
-                            if ($jumlahHadir < $minimumHadir) {
-                                $alasan = "Kehadiran belum memenuhi syarat minimal {$minimumHadir} kali. Kehadiran saat ini {$jumlahHadir} kali.";
-                            } elseif ($status === 'Tidak Lulus') {
-                                $alasan = $detail->keterangan ?: 'Status kelulusan ditetapkan Tidak Lulus oleh pengelola.';
-                            } elseif ($status === 'Lulus') {
-                                $alasan = 'Memenuhi syarat kehadiran dan dinyatakan Lulus.';
-                            } else {
-                                $alasan = 'Status kelulusan belum ditetapkan.';
-                            }
+                            $alasan = $detail->alasan_kehadiran;
                         @endphp
 
                         <tr>
@@ -140,8 +133,15 @@
                             <td>{{ $santri?->nomor_induk ?? '-' }}</td>
                             <td>{{ $anggota?->periode?->tahun ?? '-' }}</td>
                             <td>{{ $anggota?->kelompok?->nama ?? '-' }}</td>
-                            <td class="text-center">{{ $jumlahHadir }}</td>
-                            <td class="text-center">{{ $minimumHadir }}</td>
+                            <td class="text-center">{{ $attendance['total_pertemuan'] }}</td>
+                            <td class="text-center">{{ $attendance['jumlah_hadir'] }}</td>
+                            <td class="text-center">{{ $attendance['jumlah_izin'] }}</td>
+                            <td class="text-center">{{ $attendance['jumlah_sakit'] }}</td>
+                            <td class="text-center">{{ $attendance['jumlah_alpha'] }}</td>
+                            <td class="text-center">
+                                {{ $attendance['persentase'] === null ? '—' : number_format($attendance['persentase'], 2, ',', '.').'%' }}
+                            </td>
+                            <td class="text-center">{{ $attendance['status'] }}</td>
                             <td>
                                 @if ($status === 'Lulus')
                                     <span class="badge bg-success">Lulus</span>
@@ -156,7 +156,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="10" class="text-center text-muted py-4">
+                            <td colspan="15" class="text-center text-muted py-4">
                                 Belum ada data evaluasi kelulusan santri.
                             </td>
                         </tr>

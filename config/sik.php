@@ -9,8 +9,12 @@ return [
         ),
     ],
     'attendance' => [
-        // Legacy fixed-count settings are kept for features that still use the
-        // maximum meeting number (for example the meeting form validation).
+        // Legacy fixed-count settings. Dipertahankan untuk kompatibilitas
+        // mundur pada fitur yang masih menggunakan jumlah maksimal pertemuan
+        // (misalnya validasi formulir pertemuan). Sumber kebenaran tunggal
+        // untuk ambang kehadiran adalah minimum_percentage di bawah ini.
+        // JANGAN menggunakan minimum_present atau meeting_count untuk
+        // perhitungan kelayakan kelulusan atau sertifikat.
         'meeting_count' => 16,
         'minimum_present' => 14,
 

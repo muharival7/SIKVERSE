@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\UserRole;
 use App\Models\KelulusanSik;
 use App\Models\SertifikatSik;
+use App\Services\AttendanceRecapService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
@@ -17,6 +18,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SertifikatSikController extends Controller
 {
+    public function __construct(private readonly AttendanceRecapService $attendanceRecapService) {}
+
     public function index(): View
     {
         $sertifikat = SertifikatSik::with([
@@ -60,30 +63,30 @@ class SertifikatSikController extends Controller
             ->with('success', 'Sertifikat berhasil disimpan.');
     }
 
-public function edit(SertifikatSik $sertifikatSik): View
-{
-    $sertifikatSik->load([
-        'kelulusan.anggotaPeriodeSik.santri',
-        'kelulusan.anggotaPeriodeSik.periode',
-    ]);
+    public function edit(SertifikatSik $sertifikatSik): View
+    {
+        $sertifikatSik->load([
+            'kelulusan.anggotaPeriodeSik.santri',
+            'kelulusan.anggotaPeriodeSik.periode',
+        ]);
 
-    $kelulusan = $this->eligibleGraduations($sertifikatSik)
-        ->get();
+        $kelulusan = $this->eligibleGraduations($sertifikatSik)
+            ->get();
 
-    if (! $kelulusan->contains('id', $sertifikatSik->kelulusan_sik_id)) {
-        $kelulusan->push(
-            KelulusanSik::with([
-                'anggotaPeriodeSik.santri',
-                'anggotaPeriodeSik.periode',
-            ])->findOrFail($sertifikatSik->kelulusan_sik_id)
-        );
+        if (! $kelulusan->contains('id', $sertifikatSik->kelulusan_sik_id)) {
+            $kelulusan->push(
+                KelulusanSik::with([
+                    'anggotaPeriodeSik.santri',
+                    'anggotaPeriodeSik.periode',
+                ])->findOrFail($sertifikatSik->kelulusan_sik_id)
+            );
+        }
+
+        return view('sertifikat-sik.edit', [
+            'sertifikat' => $sertifikatSik,
+            'kelulusan' => $kelulusan,
+        ]);
     }
-
-    return view('sertifikat-sik.edit', [
-        'sertifikat' => $sertifikatSik,
-        'kelulusan' => $kelulusan,
-    ]);
-}
 
     public function update(Request $request, SertifikatSik $sertifikatSik): RedirectResponse
     {
@@ -183,7 +186,7 @@ public function edit(SertifikatSik $sertifikatSik): View
             Storage::disk('local')->path($sertifikatSik->file_sertifikat),
             [
                 'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'inline; filename="' . basename($sertifikatSik->file_sertifikat) . '"',
+                'Content-Disposition' => 'inline; filename="'.basename($sertifikatSik->file_sertifikat).'"',
             ]
         );
     }
@@ -210,41 +213,41 @@ public function edit(SertifikatSik $sertifikatSik): View
      */
     private function validatedData(Request $request, ?SertifikatSik $sertifikat = null): array
     {
-         $rules = [
-        'kelulusan_sik_id' => [
-            'required',
-            Rule::exists('kelulusan_sik', 'id')->where('status', 'Lulus'),
-            Rule::unique('sertifikat_sik', 'kelulusan_sik_id')->ignore($sertifikat?->id),
-        ],
-        'nomor_sertifikat' => [
-            'required',
-            'string',
-            'max:255',
-            Rule::unique('sertifikat_sik', 'nomor_sertifikat')->ignore($sertifikat?->id),
-        ],
-        'file_sertifikat' => $sertifikat === null
-            ? ['required', 'file', 'mimes:pdf', 'max:10240']
-            : ['nullable', 'file', 'mimes:pdf', 'max:10240'],
-        'tanggal_terbit' => ['nullable', 'date'],
-        'keterangan' => ['nullable', 'string'],
-    ];
+        $rules = [
+            'kelulusan_sik_id' => [
+                'required',
+                Rule::exists('kelulusan_sik', 'id')->where('status', 'Lulus'),
+                Rule::unique('sertifikat_sik', 'kelulusan_sik_id')->ignore($sertifikat?->id),
+            ],
+            'nomor_sertifikat' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('sertifikat_sik', 'nomor_sertifikat')->ignore($sertifikat?->id),
+            ],
+            'file_sertifikat' => $sertifikat === null
+                ? ['required', 'file', 'mimes:pdf', 'max:10240']
+                : ['nullable', 'file', 'mimes:pdf', 'max:10240'],
+            'tanggal_terbit' => ['nullable', 'date'],
+            'keterangan' => ['nullable', 'string'],
+        ];
 
-    $validated = $request->validate($rules);
+        $validated = $request->validate($rules);
 
-    if ($sertifikat === null || (int) $validated['kelulusan_sik_id'] !== (int) $sertifikat->kelulusan_sik_id) {
-        $isEligible = KelulusanSik::query()
-            ->whereKey($validated['kelulusan_sik_id'])
-            ->where('status', 'Lulus')
-            ->meetsAttendanceThreshold()
-            ->exists();
+        if ($sertifikat === null || (int) $validated['kelulusan_sik_id'] !== (int) $sertifikat->kelulusan_sik_id) {
+            $isEligible = KelulusanSik::query()
+                ->whereKey($validated['kelulusan_sik_id'])
+                ->where('status', 'Lulus')
+                ->meetsAttendanceThreshold()
+                ->exists();
 
-        if (! $isEligible) {
-            throw ValidationException::withMessages([
-                'kelulusan_sik_id' => 'Sertifikat hanya dapat diterbitkan untuk santri yang memenuhi ambang kehadiran.',
-            ]);
+            if (! $isEligible) {
+                throw ValidationException::withMessages([
+                    'kelulusan_sik_id' => 'Sertifikat hanya dapat diterbitkan untuk santri yang memenuhi ambang kehadiran.',
+                ]);
+            }
         }
-    }
 
-    return $validated;
-}
+        return $validated;
+    }
 }

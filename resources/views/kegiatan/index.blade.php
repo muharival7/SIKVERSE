@@ -85,7 +85,7 @@
                                 </td>
 
                                 <td>
-                                    {{ $item->kelompok->nama_kelompok ?? '-' }}
+                                    {{ $item->kelompok?->nama_kelompok ?? 'Semua Kelompok' }}
                                 </td>
 
                                 <td>{{ $item->status }}</td>
