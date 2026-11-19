@@ -31,11 +31,27 @@ class SantriController extends Controller
             'search' => ['nullable', 'string', 'max:100'],
             'status' => ['nullable', Rule::in(['Aktif', 'Tidak Aktif'])],
             'periode_sik_id' => ['nullable', 'integer', 'exists:periode_sik,id'],
-            'kelompok_id' => ['nullable', 'integer', 'exists:kelompok,id'],
+            'kelompok_id' => [
+                'nullable',
+                'integer',
+                'exists:kelompok,id',
+                function (string $attribute, mixed $value, $fail) use ($request): void {
+                    $periodeId = $request->input('periode_sik_id');
+
+                    if ($value === null || $value === '' || empty($periodeId)) {
+                        return;
+                    }
+
+                    if (! Kelompok::query()->whereKey($value)->where('periode_sik_id', $periodeId)->exists()) {
+                        $fail('Kelompok harus berada pada periode yang dipilih.');
+                    }
+                },
+            ],
+        ], [
+            'kelompok_id.exists' => 'Kelompok yang dipilih tidak ditemukan.',
         ]);
 
-        $query = Santri::query()
-            ->with(['fingerprint', 'anggotaPeriodeTerbaru.periode', 'anggotaPeriodeTerbaru.kelompok']);
+        $query = Santri::query();
 
         if (filled($filters['search'] ?? null)) {
             $search = trim($filters['search']);
@@ -50,19 +66,38 @@ class SantriController extends Controller
             $query->where('status', $filters['status']);
         }
 
-        if (filled($filters['periode_sik_id'] ?? null)) {
-            $query->whereHas('anggotaPeriode', fn ($builder) => $builder->where('periode_sik_id', $filters['periode_sik_id']));
+        $membershipFilters = array_filter([
+            'periode_sik_id' => $filters['periode_sik_id'] ?? null,
+            'kelompok_id' => $filters['kelompok_id'] ?? null,
+        ], fn ($value): bool => filled($value));
+
+        if ($membershipFilters !== []) {
+            $query->whereHas('anggotaPeriode', function ($builder) use ($membershipFilters): void {
+                foreach ($membershipFilters as $column => $value) {
+                    $builder->where($column, $value);
+                }
+            });
+
+            $query->with(['anggotaPeriode' => function ($builder) use ($membershipFilters): void {
+                foreach ($membershipFilters as $column => $value) {
+                    $builder->where($column, $value);
+                }
+
+                $builder->with(['periode', 'kelompok']);
+            }]);
+        } else {
+            $query->with(['anggotaPeriodeTerbaru.periode', 'anggotaPeriodeTerbaru.kelompok']);
         }
 
-        if (filled($filters['kelompok_id'] ?? null)) {
-            $query->whereHas('anggotaPeriode', fn ($builder) => $builder->where('kelompok_id', $filters['kelompok_id']));
-        }
-
-        $santris = $query->latest()->paginate(15)->withQueryString();
+        $santris = $query->with('fingerprint')->latest()->paginate(15)->withQueryString();
         $totalSantri = Santri::query()->count();
         $santriAktif = Santri::query()->where('status', 'Aktif')->count();
         $periodes = PeriodeSik::query()->orderByDesc('tahun')->orderByDesc('id')->get();
-        $kelompoks = Kelompok::query()->with('periode')->orderBy('nama_kelompok')->get();
+        $kelompoks = Kelompok::query()
+            ->with('periode')
+            ->where('status', 'Aktif')
+            ->orderBy('nama_kelompok')
+            ->get();
 
         return view('santris.index', compact(
             'santris', 'filters', 'totalSantri', 'santriAktif', 'periodes', 'kelompoks'
@@ -151,8 +186,8 @@ class SantriController extends Controller
         $validated = $request->validate([
             'import_token' => ['required', 'uuid'],
             'corrections' => ['nullable', 'array'],
-            'corrections.*' => ['array:jenis_kelamin'],
-            'corrections.*.jenis_kelamin' => ['nullable', Rule::in(['Laki-laki', 'Perempuan'])],
+            'corrections.*' => ['array:kelompok'],
+            'corrections.*.kelompok' => ['nullable', 'string', 'max:20'],
         ]);
 
         abort_unless(hash_equals((string) $request->session()->get('santri_import_token'), $validated['import_token']), 403);
@@ -184,8 +219,8 @@ class SantriController extends Controller
         $validated = $request->validate([
             'import_token' => ['required', 'uuid'],
             'corrections' => ['nullable', 'array'],
-            'corrections.*' => ['array:jenis_kelamin'],
-            'corrections.*.jenis_kelamin' => ['nullable', Rule::in(['Laki-laki', 'Perempuan'])],
+            'corrections.*' => ['array:kelompok'],
+            'corrections.*.kelompok' => ['nullable', 'string', 'max:20'],
         ]);
 
         abort_unless(hash_equals((string) $request->session()->get('santri_import_token'), $validated['import_token']), 403);
@@ -267,7 +302,6 @@ class SantriController extends Controller
                         'user_id' => $user->id,
                         'nomor_induk' => $data['nomor_induk'],
                         'nama' => $data['nama'],
-                        'jenis_kelamin' => $data['jenis_kelamin'],
                         'program_studi' => $data['program_studi'] !== '' ? $data['program_studi'] : null,
                         'status' => $data['status'],
                     ]);
@@ -365,8 +399,8 @@ class SantriController extends Controller
     }
 
     /**
-     * @param  list<array{row: int, sheet: string, nomor_induk: string, nama: string, jenis_kelamin: string, program_studi: string, kelompok: string, periode: string, status: string, email: string}>  $rows
-     * @param  array<int, array{jenis_kelamin: string}>  $corrections
+     * @param  list<array{row: int, sheet: string, nomor_induk: string, nama: string, program_studi: string, kelompok: string, periode: string, status: string, email: string}>  $rows
+     * @param  array<int, array{kelompok: string}>  $corrections
      */
     private function renderImportPreview(Request $request, array $rows, array $corrections = []): View
     {
@@ -381,7 +415,7 @@ class SantriController extends Controller
     /**
      * @param  array<mixed>  $corrections
      * @param  list<array<string, mixed>>  $rows
-     * @return array<int, array{jenis_kelamin: string}>
+     * @return array<int, array{kelompok: string}>
      */
     private function normalizeImportCorrections(array $corrections, array $rows): array
     {
@@ -396,15 +430,13 @@ class SantriController extends Controller
                 ]);
             }
 
-            $gender = trim((string) ($fields['jenis_kelamin'] ?? ''));
+            $groupId = trim((string) ($fields['kelompok'] ?? ''));
 
-            if ($gender !== '' && ! in_array($gender, ['Laki-laki', 'Perempuan'], true)) {
-                throw ValidationException::withMessages([
-                    'corrections' => 'Pilih jenis kelamin yang tersedia untuk setiap baris.',
-                ]);
+            if ($groupId === '') {
+                continue;
             }
 
-            $normalized[(int) $index] = ['jenis_kelamin' => $gender];
+            $normalized[(int) $index] = ['kelompok' => $groupId];
         }
 
         return $normalized;
@@ -412,14 +444,14 @@ class SantriController extends Controller
 
     /**
      * @param  list<array<string, mixed>>  $rows
-     * @param  array<int, array{jenis_kelamin: string}>  $corrections
+     * @param  array<int, array{kelompok: string}>  $corrections
      * @return list<array<string, mixed>>
      */
     private function applyImportCorrections(array $rows, array $corrections): array
     {
         foreach ($corrections as $index => $fields) {
             if (array_key_exists($index, $rows)) {
-                $rows[$index]['jenis_kelamin'] = $fields['jenis_kelamin'];
+                $rows[$index]['selected_kelompok_id'] = $fields['kelompok'];
             }
         }
 
@@ -427,15 +459,21 @@ class SantriController extends Controller
     }
 
     /**
-     * @param  list<array{row: int, sheet: string, nomor_induk: string, nama: string, jenis_kelamin: string, program_studi: string, kelompok: string, periode: string, status: string, email: string}>  $rows
-     * @return array{rows: list<array{row: int, sheet: string, category: string, reasons: list<string>, data: array<string, mixed>}>, valid: int, invalid: int, duplicate: int}
+     * @param  list<array{row: int, sheet: string, nomor_induk: string, nama: string, program_studi: string, kelompok: string, periode: string, status: string, email: string}>  $rows
+     * @return array{rows: list<array{row: int, sheet: string, category: string, reasons: list<string>, data: array<string, mixed>}>, valid: int, invalid: int, duplicate: int, total: int}
      */
     private function analyzeImportRows(array $rows): array
     {
         $activePeriods = PeriodeSik::query()->where('status', 'Aktif')->get();
         $periodsByName = $activePeriods->keyBy(fn (PeriodeSik $period): string => $this->normalizePeriodLookup($period->nama_periode));
-        $groups = Kelompok::query()->whereIn('periode_sik_id', $activePeriods->pluck('id'))->get();
+        $groups = Kelompok::query()
+            ->whereIn('periode_sik_id', $activePeriods->pluck('id'))
+            ->where('status', 'Aktif')
+            ->get();
         $groupsByName = $groups->keyBy(fn (Kelompok $group): string => $group->periode_sik_id.'|'.$this->normalizeLookupValue($group->nama_kelompok));
+        $groupsByPeriod = $groups->groupBy('periode_sik_id');
+        $groupsByNameAcrossPeriods = Kelompok::query()->with('periode')->get()
+            ->groupBy(fn (Kelompok $group): string => $this->normalizeLookupValue($group->nama_kelompok));
         $numbers = array_values(array_unique(array_filter(
             array_map(fn (array $row): string => trim($row['nomor_induk']), $rows),
             fn (string $number): bool => $number !== ''
@@ -458,31 +496,35 @@ class SantriController extends Controller
             $email = mb_strtolower(trim($row['email']));
             $emailForAccount = $email !== '' ? $email : ($number !== '' ? mb_strtolower($number).'@sik.test' : '');
             $name = trim($row['nama']);
-            $gender = trim($row['jenis_kelamin']);
             $programStudy = trim($row['program_studi']);
             $groupName = trim((string) preg_replace('/\s+/', ' ', $row['kelompok']));
+            $selectedGroupId = trim((string) ($row['selected_kelompok_id'] ?? ''));
             $statusFromFile = trim($row['status']);
             $status = $statusFromFile !== '' ? $statusFromFile : 'Aktif';
             $periodName = $this->normalizePeriodLookup($row['periode']);
             $period = $periodName !== '' ? $periodsByName->get($periodName) : null;
+            $availableGroups = $period !== null
+                ? $groupsByPeriod->get($period->id, collect())->sortBy('nama_kelompok')->values()
+                : collect();
+            $availableGroupsById = $availableGroups->keyBy('id');
             $reasons = [];
-            $isDuplicate = ($number !== '' && ($existingNumbers->has($number) || isset($seenNumbers[$number])))
-                || ($emailForAccount !== '' && ($existingEmails->has($emailForAccount) || isset($seenEmails[$emailForAccount])));
+            $nimDuplicate = $number !== '' && ($existingNumbers->has($number) || isset($seenNumbers[$number]));
+            $emailDuplicate = $emailForAccount !== '' && ($existingEmails->has($emailForAccount) || isset($seenEmails[$emailForAccount]));
+            $isDuplicate = $nimDuplicate || $emailDuplicate;
+            $missingFields = [];
 
             if ($number === '') {
-                $reasons[] = 'Nomor Induk/NIM wajib diisi.';
+                $missingFields[] = 'NIM';
             } elseif (mb_strlen($number) > 255) {
-                $reasons[] = 'Nomor Induk/NIM maksimal 255 karakter.';
+                $reasons[] = 'NIM maksimal 255 karakter.';
+            } elseif (preg_match('/^[0-9]+$/', $number) !== 1) {
+                $reasons[] = 'NIM mengandung karakter selain angka.';
             }
 
             if ($name === '') {
-                $reasons[] = 'Nama santri wajib diisi.';
+                $missingFields[] = 'Nama santri';
             } elseif (mb_strlen($name) > 255) {
                 $reasons[] = 'Nama santri maksimal 255 karakter.';
-            }
-
-            if (! in_array($gender, ['Laki-laki', 'Perempuan'], true)) {
-                $reasons[] = 'Jenis kelamin wajib dilengkapi Admin karena kolom ini wajib di database.';
             }
 
             if (mb_strlen($programStudy) > 255) {
@@ -490,12 +532,13 @@ class SantriController extends Controller
             }
 
             if ($groupName === '') {
-                $reasons[] = 'Kelompok wajib diisi.';
+                $missingFields[] = 'Kelompok';
             } elseif (mb_strlen($groupName) > 100) {
                 $reasons[] = 'Nama kelompok maksimal 100 karakter.';
             }
 
             if ($period === null) {
+                $missingFields[] = 'Periode';
                 $reasons[] = 'Periode tidak ditemukan atau tidak aktif. Isi periode pada baris data atau judul sheet dengan semester dan tahun yang sesuai.';
             }
 
@@ -506,21 +549,50 @@ class SantriController extends Controller
             if ($email !== '' && (! filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 255)) {
                 $reasons[] = 'Alamat email tidak valid atau melebihi 255 karakter.';
             } elseif ($email === '' && config('sik.auth.require_email_verification')) {
-                $reasons[] = 'Email wajib diisi karena verifikasi email aktif.';
+                $missingFields[] = 'Email';
             }
 
-            $group = $period !== null && $groupName !== ''
-                ? $groupsByName->get($period->id.'|'.$this->normalizeLookupValue($groupName))
-                : null;
-
-            if ($group !== null && $group->status !== 'Aktif') {
-                $reasons[] = 'Kelompok yang dipilih tidak aktif.';
-            } elseif ($group === null && $period !== null && $groupName !== '') {
-                $reasons[] = "Kelompok {$groupName} belum terdaftar pada periode {$period->nama_periode}. Buat dan tetapkan instruktur untuk kelompok ini sebelum import.";
+            if ($missingFields !== []) {
+                $reasons[] = 'Data wajib belum lengkap. Yang belum diisi: '.implode(', ', $missingFields).'.';
             }
 
-            if ($isDuplicate) {
-                $reasons[] = 'Nomor Induk/NIM atau email sudah terdaftar pada data atau baris lain.';
+            if ($selectedGroupId !== '') {
+                if (ctype_digit($selectedGroupId) && $availableGroupsById->has((int) $selectedGroupId)) {
+                    $group = $availableGroupsById->get((int) $selectedGroupId);
+                } else {
+                    $group = null;
+                    $reasons[] = 'Kelompok yang dipilih tidak tersedia pada periode ini. Pilih kelompok lain lalu tekan Periksa ulang.';
+                }
+            } else {
+                $group = $period !== null && $groupName !== ''
+                    ? $groupsByName->get($period->id.'|'.$this->normalizeLookupValue($groupName))
+                    : null;
+
+                if ($group === null && $period !== null && $groupName !== '') {
+                    $sameNameGroups = $groupsByNameAcrossPeriods->get($this->normalizeLookupValue($groupName), collect());
+                    $inactiveInPeriod = $sameNameGroups->first(
+                        fn (Kelompok $candidate): bool => (int) $candidate->periode_sik_id === (int) $period->id && $candidate->status !== 'Aktif'
+                    );
+                    $otherPeriod = $sameNameGroups->first(
+                        fn (Kelompok $candidate): bool => (int) $candidate->periode_sik_id !== (int) $period->id
+                    );
+
+                    if ($inactiveInPeriod !== null) {
+                        $reasons[] = "Kelompok tidak aktif. {$groupName} pada periode {$period->nama_periode} berstatus tidak aktif; pilih kelompok Aktif lalu tekan Periksa ulang.";
+                    } elseif ($otherPeriod !== null) {
+                        $reasons[] = "Kelompok tidak sesuai periode. {$groupName} termasuk periode {$otherPeriod->periode?->nama_periode}, bukan {$period->nama_periode}. Pilih kelompok pada periode yang benar.";
+                    } else {
+                        $reasons[] = "Kelompok tidak ditemukan. {$groupName} belum tersedia pada periode {$period->nama_periode}; pilih kelompok yang tersedia lalu tekan Periksa ulang.";
+                    }
+                }
+            }
+
+            if ($nimDuplicate) {
+                $reasons[] = 'NIM sudah terdaftar.';
+            }
+
+            if ($emailDuplicate) {
+                $reasons[] = 'Email sudah terdaftar.';
             }
 
             $category = $isDuplicate ? 'duplicate' : (count($reasons) > 0 ? 'invalid' : 'valid');
@@ -549,9 +621,14 @@ class SantriController extends Controller
                 'data' => [
                     'nomor_induk' => $number,
                     'nama' => $name,
-                    'jenis_kelamin' => $gender,
                     'program_studi' => $programStudy,
-                    'kelompok' => $groupName,
+                    'kelompok' => $group?->nama_kelompok ?? $groupName,
+                    'kelompok_excel' => $groupName,
+                    'kelompok_options' => $availableGroups->map(fn (Kelompok $option): array => [
+                        'id' => (int) $option->id,
+                        'nama' => $option->nama_kelompok,
+                    ])->all(),
+                    'selected_kelompok_id' => $selectedGroupId !== '' ? $selectedGroupId : (string) ($group?->id ?? ''),
                     'periode_label' => $period?->nama_periode ?? trim($row['periode']),
                     'periode_sik_id' => $period?->id,
                     'status' => $status,
@@ -568,6 +645,7 @@ class SantriController extends Controller
             'valid' => $validCount,
             'invalid' => $invalidCount,
             'duplicate' => $duplicateCount,
+            'total' => count($analyzedRows),
         ];
     }
 
@@ -638,7 +716,7 @@ class SantriController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'nomor_induk' => ['required', 'string', 'unique:santris,nomor_induk'],
+            'nomor_induk' => ['required', 'string', 'max:255', 'regex:/^[0-9]+$/', 'unique:santris,nomor_induk'],
             'nama' => ['required', 'string', 'max:255'],
             'email' => [
                 Rule::requiredIf(config('sik.auth.require_email_verification')),
@@ -653,6 +731,9 @@ class SantriController extends Controller
             'program_studi' => ['nullable', 'string', 'max:255'],
             'fingerprint_id' => ['nullable', 'string', 'max:255', 'unique:fingerprints,fingerprint_id'],
             'status' => ['required', Rule::in(['Aktif', 'Tidak Aktif'])],
+        ], [
+            'nomor_induk.regex' => 'Nomor Induk/NIM hanya boleh berisi angka 0-9.',
+            'nomor_induk.unique' => 'Nomor Induk/NIM sudah terdaftar.',
         ]);
 
         $temporaryPassword = Str::random(12);
@@ -710,7 +791,12 @@ class SantriController extends Controller
 
     public function show(Santri $santri): View
     {
-        $santri->load(['user', 'fingerprint']);
+        $santri->load([
+            'user',
+            'fingerprint',
+            'anggotaPeriode.periode',
+            'anggotaPeriode.kelompok',
+        ]);
 
         return view('santris.show', compact('santri'));
     }
@@ -722,6 +808,17 @@ class SantriController extends Controller
         $validated = $request->validate([
             'nomor_induk' => [
                 'required',
+                'string',
+                'max:255',
+                function (string $attribute, mixed $value, $fail) use ($santri): void {
+                    if ((string) $value === (string) $santri->nomor_induk) {
+                        return;
+                    }
+
+                    if (preg_match('/^[0-9]+$/', (string) $value) !== 1) {
+                        $fail('Nomor Induk/NIM hanya boleh berisi angka 0-9.');
+                    }
+                },
                 Rule::unique('santris')->ignore($santri->id),
             ],
             'nama' => ['required', 'string', 'max:255'],
@@ -743,6 +840,8 @@ class SantriController extends Controller
                 Rule::unique('fingerprints', 'fingerprint_id')->ignore($santri->fingerprint?->id),
             ],
             'status' => ['required', Rule::in(['Aktif', 'Tidak Aktif'])],
+        ], [
+            'nomor_induk.unique' => 'Nomor Induk/NIM sudah terdaftar.',
         ]);
 
         $fingerprintId = $validated['fingerprint_id'] ?? null;

@@ -37,6 +37,7 @@
                                    name="nama_periode"
                                    value="{{ old('nama_periode', 'ganjil_2026') }}"
                                    placeholder="ganjil_2026"
+                                   required
                                    class="w-full rounded-lg border-gray-300 focus:border-[#800020] focus:ring-[#800020]">
 
                             @error('nama_periode')
@@ -55,6 +56,7 @@
                                    placeholder="2026"
                                    min="2000"
                                    max="2100"
+                                   required
                                    class="w-full rounded-lg border-gray-300 focus:border-[#800020] focus:ring-[#800020]">
 
                             @error('tahun')
@@ -72,6 +74,7 @@
                                 <input type="date"
                                        name="tanggal_mulai"
                                        value="{{ old('tanggal_mulai') }}"
+                                       required
                                        class="w-full rounded-lg border-gray-300 focus:border-[#800020] focus:ring-[#800020]">
 
                                 @error('tanggal_mulai')
@@ -87,6 +90,7 @@
                                 <input type="date"
                                        name="tanggal_selesai"
                                        value="{{ old('tanggal_selesai') }}"
+                                       required
                                        class="w-full rounded-lg border-gray-300 focus:border-[#800020] focus:ring-[#800020]">
 
                                 @error('tanggal_selesai')
@@ -102,6 +106,7 @@
                             </label>
 
                             <select name="status"
+                                    required
                                     class="w-full rounded-lg border-gray-300 focus:border-[#800020] focus:ring-[#800020]">
 
                                 <option value="Persiapan" {{ old('status', 'Persiapan') === 'Persiapan' ? 'selected' : '' }}>

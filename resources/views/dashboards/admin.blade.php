@@ -21,7 +21,7 @@
     <section class="row g-3" aria-label="Ringkasan SIK">
         <div class="col-6 col-xl-3"><article class="sd-kpi-card"><div class="sd-kpi-heading"><span>Total Santri</span><span class="sd-kpi-icon maroon"><x-sik-icon name="students" /></span></div><strong>{{ number_format($adminStats['totalSantri']) }}</strong><small>Data santri terdaftar</small></article></div>
         <div class="col-6 col-xl-3"><article class="sd-kpi-card"><div class="sd-kpi-heading"><span>Total Dosen</span><span class="sd-kpi-icon gold"><x-sik-icon name="users" /></span></div><strong>{{ number_format($adminStats['totalDosen']) }}</strong><small>Data dosen terdaftar</small></article></div>
-        <div class="col-6 col-xl-3"><article class="sd-kpi-card"><div class="sd-kpi-heading"><span>Rata-rata Kehadiran</span><span class="sd-kpi-icon blue"><x-sik-icon name="calendar" /></span></div><strong>{{ $adminStats['rataKehadiran'] === null ? '—' : number_format($adminStats['rataKehadiran'], 0).'%' }}</strong><small>{{ number_format($adminStats['totalRekap']) }} rekap pada periode aktif</small></article></div>
+        <div class="col-6 col-xl-3"><article class="sd-kpi-card"><div class="sd-kpi-heading"><span>Rata-rata Kehadiran</span><span class="sd-kpi-icon blue"><x-sik-icon name="calendar" /></span></div><strong>{{ $adminStats['rataKehadiranDisplay'] }}</strong><small>{{ number_format($adminStats['totalRekap']) }} baris rekap · ambang {{ $adminStats['minimumPercentageDisplay'] }}</small></article></div>
         <div class="col-6 col-xl-3"><article class="sd-kpi-card"><div class="sd-kpi-heading"><span>Santri Lulus</span><span class="sd-kpi-icon green"><x-sik-icon name="check" /></span></div><strong>{{ number_format($adminStats['mahasiswaLulus']) }}</strong><small>{{ $dashboardPeriod?->nama_periode ?? 'Periode aktif' }}</small></article></div>
     </section>
 
@@ -31,7 +31,7 @@
                 <div class="sd-card-heading"><div><span class="sd-section-kicker">REKAP KEHADIRAN SANTRI</span><h2 id="admin-attendance-share-title">Persentase Kehadiran</h2><p class="sd-card-description">{{ $dashboardPeriod?->nama_periode ?? 'Seluruh periode' }}</p></div></div>
                 <div class="sd-attendance-overview mb-0">
                     <div class="sd-attendance-ring-wrap">
-                        <div class="sd-attendance-ring" role="img" aria-label="Persentase hadir {{ $adminAttendanceDistribution['persentase'] === null ? 'belum tersedia' : number_format($adminAttendanceDistribution['persentase'], 1).' persen' }}" style="--attendance-value: {{ $adminAttendanceDistribution['persentase'] ?? 0 }}%;"><div class="sd-ring-center"><strong>{{ $adminAttendanceDistribution['persentase'] === null ? '—' : number_format($adminAttendanceDistribution['persentase'], 0).'%' }}</strong><span>Kehadiran</span></div></div>
+                        <div class="sd-attendance-ring" role="img" aria-label="Persentase hadir {{ $adminAttendanceDistribution['persentaseDisplay'] === '—' ? 'belum tersedia' : $adminAttendanceDistribution['persentaseDisplay'] }}" style="--attendance-value: {{ $adminAttendanceDistribution['persentase'] ?? 0 }}%;"><div class="sd-ring-center"><strong>{{ $adminAttendanceDistribution['persentaseDisplay'] }}</strong><span>Kehadiran</span></div></div>
                         <span class="sd-ring-caption">{{ number_format($adminStats['totalRekap']) }} rekap</span>
                     </div>
                     <div class="sd-status-summary" aria-label="Ringkasan kehadiran">
@@ -104,7 +104,7 @@
                         <strong class="admin-certificate-count-value">{{ number_format($adminStats['mahasiswaLulus']) }}</strong>
                         <span class="admin-certificate-count-label">santri memenuhi syarat kelulusan</span>
                     </div>
-                    <p class="admin-certificate-note">Data kelulusan berasal dari hasil evaluasi dan kehadiran tersimpan.</p>
+                    <p class="admin-certificate-note">Jumlah ini dihitung ulang dari pertemuan Terlaksana dan ambang {{ $adminStats['minimumPercentageDisplay'] }}.</p>
                 </div>
 
                 <a class="sd-button sd-button-primary admin-certificate-action" href="{{ route('sertifikat-sik.index') }}">

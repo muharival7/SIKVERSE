@@ -138,9 +138,25 @@ class PertemuanController extends Controller
             ->map(fn (int $id): int => $id)
             ->all();
 
+        $instruktur = InfrastrukturSik::query()
+            ->where('status', 'Aktif')
+            ->orderBy('nama')
+            ->get();
+
+        $selectedInstrukturId = (int) old('instruktur_pengganti_id', $pertemuan?->instruktur_pengganti_id ?? 0);
+
+        if ($selectedInstrukturId > 0 && ! $instruktur->contains('id', $selectedInstrukturId)) {
+            $selected = InfrastrukturSik::find($selectedInstrukturId);
+
+            if ($selected instanceof InfrastrukturSik) {
+                $instruktur->push($selected);
+                $instruktur = $instruktur->sortBy('nama')->values();
+            }
+        }
+
         return [
             'kegiatan' => $daftarKegiatan,
-            'instruktur' => InfrastrukturSik::orderBy('nama')->get(),
+            'instruktur' => $instruktur,
             'kelompok' => $kelompok,
             'sharedActivityIds' => $sharedActivityIds,
         ];
@@ -165,7 +181,23 @@ class PertemuanController extends Controller
                     ->ignore($pertemuan?->id),
             ],
             'tanggal' => ['required', 'date'],
-            'instruktur_pengganti_id' => ['nullable', 'exists:infrastruktur_siks,id'],
+            'instruktur_pengganti_id' => [
+                'nullable',
+                'exists:infrastruktur_siks,id',
+                function (string $attribute, mixed $value, $fail) use ($pertemuan): void {
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+
+                    if ((string) $value === (string) $pertemuan?->instruktur_pengganti_id) {
+                        return;
+                    }
+
+                    if (! InfrastrukturSik::query()->whereKey($value)->where('status', 'Aktif')->exists()) {
+                        $fail('Instruktur pengganti harus berstatus Aktif.');
+                    }
+                },
+            ],
             'kelompok_host_id' => ['nullable', 'exists:kelompok,id'],
             'waktu_mulai' => ['nullable', 'date_format:H:i'],
             'waktu_selesai' => $request->filled('waktu_mulai')

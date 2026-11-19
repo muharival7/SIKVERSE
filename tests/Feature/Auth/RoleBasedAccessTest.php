@@ -69,7 +69,7 @@ test('public registration always creates a santri account', function () {
     $this->post('/register', [
         'name' => 'Santri Baru',
         'email' => 'santri@example.test',
-        'nomor_induk' => 'TEST-PUBLIC-001',
+        'nomor_induk' => '900002',
         'program_studi' => 'Sistem Informasi',
         'jenis_kelamin' => 'Laki-laki',
         'password' => 'password',

@@ -10,6 +10,7 @@
         </div>
         <div class="d-flex flex-wrap gap-2">
             <a href="{{ route('kelompok.index') }}" class="btn btn-outline-secondary">Kelola Kelompok</a>
+            <a href="{{ route('anggota-periode-sik.create') }}" class="btn btn-outline-secondary">Tetapkan Kelompok</a>
             <a href="{{ route('periode-sik.index') }}" class="btn btn-outline-secondary">Periode SIK</a>
             <a href="{{ route('santris.import') }}" class="btn btn-outline-danger"><x-sik-icon name="upload" class="me-1" /> Import Excel</a>
             <a href="{{ route('santris.create') }}" class="btn btn-primary">+ Tambah Santri</a>
@@ -62,7 +63,7 @@
                 <div class="col-12 col-lg-4"><label for="santri-search" class="form-label">Cari santri</label><input id="santri-search" type="search" name="search" value="{{ $filters['search'] ?? '' }}" class="form-control" placeholder="NIM, nama, atau email"></div>
                 <div class="col-6 col-lg-2"><label for="santri-status" class="form-label">Status</label><select id="santri-status" name="status" class="form-select"><option value="">Semua</option><option value="Aktif" @selected(($filters['status'] ?? '') === 'Aktif')>Aktif</option><option value="Tidak Aktif" @selected(($filters['status'] ?? '') === 'Tidak Aktif')>Tidak Aktif</option></select></div>
                 <div class="col-6 col-lg-3"><label for="santri-period" class="form-label">Periode</label><select id="santri-period" name="periode_sik_id" class="form-select"><option value="">Semua periode</option>@foreach ($periodes as $periode)<option value="{{ $periode->id }}" @selected((string) ($filters['periode_sik_id'] ?? '') === (string) $periode->id)>{{ $periode->nama_periode }}</option>@endforeach</select></div>
-                <div class="col-8 col-lg-2"><label for="santri-group" class="form-label">Kelompok</label><select id="santri-group" name="kelompok_id" class="form-select"><option value="">Semua kelompok</option>@foreach ($kelompoks as $kelompok)<option value="{{ $kelompok->id }}" @selected((string) ($filters['kelompok_id'] ?? '') === (string) $kelompok->id)>{{ $kelompok->nama_kelompok }} · {{ $kelompok->periode?->nama_periode }}</option>@endforeach</select></div>
+                <div class="col-8 col-lg-2"><label for="santri-group" class="form-label">Kelompok</label><select id="santri-group" name="kelompok_id" class="form-select"><option value="">Semua kelompok</option>@foreach ($kelompoks as $kelompok)<option value="{{ $kelompok->id }}" data-periode="{{ $kelompok->periode_sik_id }}" @selected((string) ($filters['kelompok_id'] ?? '') === (string) $kelompok->id)>{{ $kelompok->nama_kelompok }} · {{ $kelompok->periode?->nama_periode }}</option>@endforeach</select></div>
                 <div class="col-4 col-lg-1 d-flex gap-2"><button class="btn btn-danger flex-grow-1" type="submit">Cari</button></div>
                 @if (count(array_filter($filters, fn ($value) => filled($value))) > 0)<div class="col-12"><a href="{{ route('santris.index') }}" class="small">Hapus filter</a></div>@endif
             </form>
@@ -76,7 +77,12 @@
                 <thead style="background:#fbf4f3;color:#760d12"><tr><th>No</th><th>Nomor Induk</th><th>Nama Santri</th><th>Program Studi</th><th>Kelompok</th><th>Periode</th><th>Status</th><th class="text-end">Aksi</th></tr></thead>
                 <tbody>
                     @forelse ($santris as $santri)
-                        @php($membership = $santri->anggotaPeriodeTerbaru)
+                        @php
+                            $hasMembershipFilter = filled($filters['periode_sik_id'] ?? null) || filled($filters['kelompok_id'] ?? null);
+                            $membership = $hasMembershipFilter
+                                ? $santri->anggotaPeriode->first()
+                                : $santri->anggotaPeriodeTerbaru;
+                        @endphp
                         <tr>
                             <td>{{ $santris->firstItem() + $loop->index }}</td>
                             <td class="fw-semibold">{{ $santri->nomor_induk }}</td>
@@ -101,4 +107,38 @@
         @if ($santris->hasPages())<div class="card-footer bg-white">{{ $santris->links() }}</div>@endif
     </div>
 </div>
+
+@pushOnce('scripts')
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const periodeSelect = document.getElementById('santri-period');
+        const kelompokSelect = document.getElementById('santri-group');
+
+        if (!periodeSelect || !kelompokSelect) {
+            return;
+        }
+
+        function sesuaikanKelompok() {
+            const periodeTerpilih = periodeSelect.value;
+
+            Array.from(kelompokSelect.options).forEach(function (option) {
+                if (!option.value) {
+                    return;
+                }
+
+                option.hidden = periodeTerpilih !== '' && option.dataset.periode !== periodeTerpilih;
+                option.disabled = option.hidden;
+            });
+
+            const selected = kelompokSelect.options[kelompokSelect.selectedIndex];
+            if (selected && selected.hidden) {
+                kelompokSelect.value = '';
+            }
+        }
+
+        periodeSelect.addEventListener('change', sesuaikanKelompok);
+        sesuaikanKelompok();
+    });
+</script>
+@endpushOnce
 @endsection

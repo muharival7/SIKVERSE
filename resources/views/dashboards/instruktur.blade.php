@@ -36,8 +36,8 @@
         <div class="col-12 col-sm-4">
             <article class="sd-kpi-card">
                 <div class="sd-kpi-heading"><span>Rata-rata kehadiran</span><span class="sd-kpi-icon blue"><x-sik-icon name="report" /></span></div>
-                <strong>{{ $infrastrukturStats['rataKehadiran'] === null ? '—' : number_format($infrastrukturStats['rataKehadiran'], 0) . '%' }}</strong>
-                <small>{{ $infrastrukturStats['totalRekap'] }} rekap kegiatan</small>
+                <strong>{{ $infrastrukturStats['rataKehadiranDisplay'] }}</strong>
+                <small>{{ $infrastrukturStats['totalRekap'] }} baris rekap · ambang {{ $infrastrukturStats['minimumPercentageDisplay'] }}</small>
             </article>
         </div>
     </section>
@@ -61,7 +61,7 @@
                 </div>
                 <script type="application/json" id="instructor-attendance-trend-data">@json($infrastrukturAttendanceTrend)</script>
                 <div class="sd-instructor-card-footer">
-                    <span>Grafik memakai status absensi yang tercatat pada pertemuan.</span>
+                    <span>{{ $infrastrukturStats['noMeetings'] ? $infrastrukturStats['noMeetingsStatus'] : 'Grafik memakai status absensi pada pertemuan Terlaksana.' }}</span>
                     <a class="sd-button sd-button-outline" href="{{ route('rekap-kehadiran-sik.index') }}">Lihat rekap lengkap</a>
                 </div>
             </div>

@@ -20,7 +20,7 @@
             </div>
             <div class="sik-login-field">
                 <label class="sik-login-label" for="password">Kata sandi baru</label>
-                <input class="sik-login-control" id="password" type="password" name="password" required autocomplete="new-password" placeholder="Masukkan kata sandi baru">
+                <input class="sik-login-control" id="password" type="password" name="password" required minlength="8" autocomplete="new-password" placeholder="Masukkan kata sandi baru">
                 @error('password')<p class="sik-login-error" role="alert">{{ $message }}</p>@enderror
             </div>
             <div class="sik-login-field">

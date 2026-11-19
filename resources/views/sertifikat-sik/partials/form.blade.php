@@ -5,6 +5,7 @@
         name="kelulusan_sik_id"
         id="kelulusan_sik_id"
         required>
+    <option value="" disabled @selected(empty(old('kelulusan_sik_id', $item?->kelulusan_sik_id)))>Pilih kelulusan peserta</option>
 
     @foreach ($kelulusan as $result)
         <option value="{{ $result->id }}"
@@ -12,9 +13,11 @@
             {{ $result->anggotaPeriodeSik?->santri?->nomor_induk }}
             — {{ $result->anggotaPeriodeSik?->santri?->nama }}
             / {{ $result->anggotaPeriodeSik?->periode?->nama_periode }}
+            · {{ $result->evaluasi_label }}
         </option>
     @endforeach
 </select>        @error('kelulusan_sik_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
+        <div class="form-text">Hanya catatan Lulus yang memenuhi ambang kehadiran yang dapat dipilih. Sertifikat yang sudah diterbitkan tetap dapat diedit.</div>
     </div>
 
     <div class="col-md-6">

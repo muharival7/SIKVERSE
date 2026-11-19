@@ -8,7 +8,13 @@
             @csrf
             <div class="row g-3">
                 @foreach ([['name','Nama Lengkap','text'],['email','Email','email'],['nip','NIP','text'],['program_studi','Program Studi','text']] as [$field,$label,$type])
-                    <div class="col-md-6"><label class="form-label" for="{{ $field }}">{{ $label }}</label><input class="form-control @error($field) is-invalid @enderror" id="{{ $field }}" type="{{ $type }}" name="{{ $field }}" value="{{ old($field) }}" required>@error($field)<div class="invalid-feedback">{{ $message }}</div>@enderror</div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="{{ $field }}">{{ $label }}</label>
+                        <input class="form-control @error($field) is-invalid @enderror" id="{{ $field }}" type="{{ $type }}" name="{{ $field }}" value="{{ old($field) }}"
+                            @if ($field === 'nip') maxlength="50" inputmode="numeric" pattern="[0-9]*" title="NIP hanya boleh berisi angka 0-9." @else maxlength="255" @endif
+                            required>
+                        @error($field)<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
                 @endforeach
             </div>
             <p class="form-text mt-3">Sistem membuat password sementara dan meminta dosen menggantinya saat pertama kali masuk.</p>

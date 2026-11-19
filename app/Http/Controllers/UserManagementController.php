@@ -124,8 +124,11 @@ class UserManagementController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:users,email'],
-            'nip' => ['required', 'string', 'max:50', 'unique:infrastruktur_siks,nip'],
+            'nip' => ['required', 'string', 'max:50', 'regex:/^[0-9]+$/', 'unique:infrastruktur_siks,nip'],
             'program_studi' => ['required', 'string', 'max:255'],
+        ], [
+            'nip.regex' => 'NIP hanya boleh berisi angka 0-9.',
+            'nip.unique' => 'NIP sudah terdaftar.',
         ]);
 
         $temporaryPassword = Str::random(14);
@@ -181,10 +184,30 @@ class UserManagementController extends Controller
                 'max:255',
                 Rule::unique('users', 'email')->ignore($user->id),
             ],
-            'nip' => ['nullable', 'string', 'max:50', Rule::unique('infrastruktur_siks', 'nip')->ignore($user->infrastrukturSik?->id)],
+            'nip' => [
+                'nullable',
+                'string',
+                'max:50',
+                function (string $attribute, mixed $value, $fail) use ($user): void {
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+
+                    if ((string) $value === (string) $user->infrastrukturSik?->nip) {
+                        return;
+                    }
+
+                    if (preg_match('/^[0-9]+$/', (string) $value) !== 1) {
+                        $fail('NIP hanya boleh berisi angka 0-9.');
+                    }
+                },
+                Rule::unique('infrastruktur_siks', 'nip')->ignore($user->infrastrukturSik?->id),
+            ],
             'program_studi' => ['nullable', 'string', 'max:255'],
             'password' => ['nullable', 'confirmed', Password::min(8)],
             'status' => ['nullable', Rule::in(['Aktif', 'Tidak Aktif'])],
+        ], [
+            'nip.unique' => 'NIP sudah terdaftar.',
         ]);
 
         $emailChanged = $user->email !== $validated['email'];

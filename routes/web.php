@@ -202,6 +202,8 @@ Route::middleware($authenticatedMiddleware)->group(function (): void {
             ->name('rekap-kehadiran-sik.index');
         Route::get('/rekap-kehadiran-sik/export', [RekapKehadiranSikController::class, 'export'])
             ->name('rekap-kehadiran-sik.export');
+        Route::get('/rekap-kehadiran-sik/detail', [RekapKehadiranSikController::class, 'detail'])
+            ->name('rekap-kehadiran-sik.detail');
         Route::get('/rekap-kehadiran-sik/{rekapKehadiranSik}', [RekapKehadiranSikController::class, 'show'])
             ->whereNumber('rekapKehadiranSik')
             ->name('rekap-kehadiran-sik.show');

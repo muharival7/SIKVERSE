@@ -57,7 +57,7 @@ function makeRabuMengajiImportFixture(): array
     ]);
 
     $santri1 = Santri::query()->create([
-        'nomor_induk' => 'MGJ-001',
+        'nomor_induk' => '900001',
         'nama' => 'Santri Mengaji Satu',
         'jenis_kelamin' => 'Laki-laki',
         'status' => 'Aktif',
@@ -70,7 +70,7 @@ function makeRabuMengajiImportFixture(): array
     ]);
 
     $santri2 = Santri::query()->create([
-        'nomor_induk' => 'MGJ-002',
+        'nomor_induk' => '900002',
         'nama' => 'Santri Mengaji Dua',
         'jenis_kelamin' => 'Perempuan',
         'status' => 'Aktif',
@@ -236,8 +236,8 @@ test('admin can preview valid XLSX import for rabu mengaji', function () {
 
     $xlsxContents = createXlsxFile([
         ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
-        ['MGJ-001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', 'Hadir tepat waktu'],
-        ['MGJ-002', 'Santri Mengaji Dua', '2026-11-18', 'Izin', 'Izin sakit'],
+        ['900001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', 'Hadir tepat waktu'],
+        ['900002', 'Santri Mengaji Dua', '2026-11-18', 'Izin', 'Izin sakit'],
     ]);
 
     Storage::disk('local')->put('test-import-valid.xlsx', $xlsxContents);
@@ -250,8 +250,8 @@ test('admin can preview valid XLSX import for rabu mengaji', function () {
         ->assertOk()
         ->assertSee('Santri Mengaji Satu')
         ->assertSee('Santri Mengaji Dua')
-        ->assertSee('MGJ-001')
-        ->assertSee('MGJ-002');
+        ->assertSee('900001')
+        ->assertSee('900002');
 });
 
 test('admin commits valid XLSX import and creates absensi records', function () {
@@ -259,8 +259,8 @@ test('admin commits valid XLSX import and creates absensi records', function () 
 
     $xlsxContents = createXlsxFile([
         ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
-        ['MGJ-001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', 'Hadir tepat waktu'],
-        ['MGJ-002', 'Santri Mengaji Dua', '2026-11-18', 'Izin', 'Izin sakit'],
+        ['900001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', 'Hadir tepat waktu'],
+        ['900002', 'Santri Mengaji Dua', '2026-11-18', 'Izin', 'Izin sakit'],
     ]);
 
     $this->actingAs($fixture['admin'])
@@ -295,7 +295,7 @@ test('preview does not save any data to absensi_sik', function () {
 
     $xlsxContents = createXlsxFile([
         ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
-        ['MGJ-001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', ''],
+        ['900001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', ''],
     ]);
 
     $this->actingAs($fixture['admin'])
@@ -313,7 +313,7 @@ test('header tidak sesuai ditolak', function () {
 
     $xlsxContents = createXlsxFile([
         ['ID', 'Nama', 'Tanggal', 'Status', 'Keterangan'],
-        ['MGJ-001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', ''],
+        ['900001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', ''],
     ]);
 
     $response = $this->actingAs($fixture['admin'])
@@ -342,7 +342,7 @@ test('NIM tidak ditemukan ditandai tidak valid', function () {
 
     $xlsxContents = createXlsxFile([
         ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
-        ['MGJ-999', 'Santri Tidak Dikenal', '2026-11-18', 'Hadir', ''],
+        ['909999', 'Santri Tidak Dikenal', '2026-11-18', 'Hadir', ''],
     ]);
 
     $this->actingAs($fixture['admin'])
@@ -351,8 +351,26 @@ test('NIM tidak ditemukan ditandai tidak valid', function () {
             'file' => UploadedFile::fake()->createWithContent('import.xlsx', $xlsxContents),
         ])
         ->assertOk()
-        ->assertSee('MGJ-999')
+        ->assertSee('909999')
         ->assertSee('Tidak valid');
+});
+
+test('NIM dengan huruf ditandai tidak valid', function () {
+    $fixture = makeRabuMengajiImportFixture();
+
+    $xlsxContents = createXlsxFile([
+        ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
+        ['MGJ-001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', ''],
+    ]);
+
+    $this->actingAs($fixture['admin'])
+        ->post(route('rabu-mengaji.import.preview'), [
+            'pertemuan_id' => $fixture['meeting']->id,
+            'file' => UploadedFile::fake()->createWithContent('import.xlsx', $xlsxContents),
+        ])
+        ->assertOk()
+        ->assertSee('MGJ-001')
+        ->assertSee('NIM hanya boleh berisi angka 0-9.');
 });
 
 test('nama tidak cocok dengan NIM ditandai tidak valid', function () {
@@ -360,7 +378,7 @@ test('nama tidak cocok dengan NIM ditandai tidak valid', function () {
 
     $xlsxContents = createXlsxFile([
         ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
-        ['MGJ-001', 'Nama Salah', '2026-11-18', 'Hadir', ''],
+        ['900001', 'Nama Salah', '2026-11-18', 'Hadir', ''],
     ]);
 
     $this->actingAs($fixture['admin'])
@@ -378,7 +396,7 @@ test('status tidak valid ditandai tidak valid', function () {
 
     $xlsxContents = createXlsxFile([
         ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
-        ['MGJ-001', 'Santri Mengaji Satu', '2026-11-18', 'Cuti', ''],
+        ['900001', 'Santri Mengaji Satu', '2026-11-18', 'Cuti', ''],
     ]);
 
     $this->actingAs($fixture['admin'])
@@ -396,7 +414,7 @@ test('tanggal berbeda dari pertemuan ditandai tidak valid', function () {
 
     $xlsxContents = createXlsxFile([
         ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
-        ['MGJ-001', 'Santri Mengaji Satu', '2026-11-20', 'Hadir', ''],
+        ['900001', 'Santri Mengaji Satu', '2026-11-20', 'Hadir', ''],
     ]);
 
     $this->actingAs($fixture['admin'])
@@ -414,7 +432,7 @@ test('anggota dari kelompok lain pada periode sama diterima sebagai peserta rabu
 
     $xlsxContents = createXlsxFile([
         ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
-        ['MGJ-002', 'Santri Mengaji Dua', '2026-11-18', 'Hadir', ''],
+        ['900002', 'Santri Mengaji Dua', '2026-11-18', 'Hadir', ''],
     ]);
 
     $this->actingAs($fixture['admin'])
@@ -423,7 +441,7 @@ test('anggota dari kelompok lain pada periode sama diterima sebagai peserta rabu
             'file' => UploadedFile::fake()->createWithContent('import.xlsx', $xlsxContents),
         ])
         ->assertOk()
-        ->assertSee('MGJ-002')
+        ->assertSee('900002')
         ->assertViewHas('analysis', function (array $analysis): bool {
             return $analysis['valid'] === 1
                 && $analysis['invalid'] === 0
@@ -436,8 +454,8 @@ test('data duplikat dalam file ditandai sebagai duplikat', function () {
 
     $xlsxContents = createXlsxFile([
         ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
-        ['MGJ-001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', ''],
-        ['MGJ-001', 'Santri Mengaji Satu', '2026-11-18', 'Izin', ''],
+        ['900001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', ''],
+        ['900001', 'Santri Mengaji Satu', '2026-11-18', 'Izin', ''],
     ]);
 
     $this->actingAs($fixture['admin'])
@@ -454,8 +472,8 @@ test('commit hanya menyimpan baris valid', function () {
 
     $xlsxContents = createXlsxFile([
         ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
-        ['MGJ-001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', ''],
-        ['MGJ-999', 'Tidak Dikenal', '2026-11-18', 'Hadir', ''],
+        ['900001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', ''],
+        ['909999', 'Tidak Dikenal', '2026-11-18', 'Hadir', ''],
     ]);
 
     $this->actingAs($fixture['admin'])
@@ -481,7 +499,7 @@ test('commit hanya menyimpan baris valid', function () {
         'status' => 'Hadir',
         'keterangan' => null,
     ]);
-    // Only MGJ-001 should exist, MGJ-999 should not
+    // Only 900001 should exist, 909999 should not
     $this->assertDatabaseCount('absensi_sik', 1);
 });
 
@@ -490,7 +508,7 @@ test('instruktur SIK dapat mengimpor untuk kelompok kewenangannya', function () 
 
     $xlsxContents = createXlsxFile([
         ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
-        ['MGJ-001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', ''],
+        ['900001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', ''],
     ]);
 
     // Instruktur dapat melakukan preview untuk kelompok kewenangannya
@@ -521,8 +539,8 @@ test('instruktur SIK dari kelompok lain dapat mengimpor peserta rabu mengaji', f
 
     $xlsxContents = createXlsxFile([
         ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
-        ['MGJ-001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', ''],
-        ['MGJ-002', 'Santri Mengaji Dua', '2026-11-18', 'Izin', ''],
+        ['900001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', ''],
+        ['900002', 'Santri Mengaji Dua', '2026-11-18', 'Izin', ''],
     ]);
 
     $this->actingAs($fixture['otherInstructorUser'])
@@ -548,7 +566,7 @@ test('instruktur SIK tidak aktif ditolak saat mengimpor rabu mengaji', function 
 
     $xlsxContents = createXlsxFile([
         ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
-        ['MGJ-001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', ''],
+        ['900001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', ''],
     ]);
 
     $this->actingAs($nonaktifUser)
@@ -591,7 +609,7 @@ test('pertemuan dibatalkan tidak dapat menerima impor', function () {
 
     $xlsxContents = createXlsxFile([
         ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
-        ['MGJ-001', 'Santri Mengaji Satu', '2026-11-25', 'Hadir', ''],
+        ['900001', 'Santri Mengaji Satu', '2026-11-25', 'Hadir', ''],
     ]);
 
     $this->actingAs($fixture['admin'])
@@ -614,7 +632,7 @@ test('rekap tersinkronisasi setelah commit', function () {
 
     $xlsxContents = createXlsxFile([
         ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
-        ['MGJ-001', 'Santri Mengaji Satu', '2026-11-20', 'Hadir', ''],
+        ['900001', 'Santri Mengaji Satu', '2026-11-20', 'Hadir', ''],
     ]);
 
     $this->actingAs($fixture['admin'])
@@ -651,7 +669,7 @@ test('absensi yang sudah ada tidak ditimpa oleh impor', function () {
 
     $xlsxContents = createXlsxFile([
         ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
-        ['MGJ-001', 'Santri Mengaji Satu', '2026-11-18', 'Alpha', ''],
+        ['900001', 'Santri Mengaji Satu', '2026-11-18', 'Alpha', ''],
     ]);
 
     $this->actingAs($fixture['admin'])
@@ -710,7 +728,7 @@ test('tanggal numerik excel dinormalisasi sebelum divalidasi', function () {
     // 46344 adalah serial Excel untuk 2026-11-18.
     $xlsxContents = createXlsxFile([
         ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
-        ['MGJ-001', 'Santri Mengaji Satu', '46344', 'Hadir', ''],
+        ['900001', 'Santri Mengaji Satu', '46344', 'Hadir', ''],
     ]);
 
     $this->actingAs($fixture['admin'])
@@ -727,7 +745,7 @@ test('alias ganda pada baris data tidak menggagalkan seluruh berkas', function (
 
     $xlsxContents = createXlsxFile([
         ['NIM', 'Nama Santri', 'Tanggal', 'Status Kehadiran', 'Keterangan'],
-        ['MGJ-001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', '', 'Nama', 'Status'],
+        ['900001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', '', 'Nama', 'Status'],
     ]);
 
     $this->actingAs($fixture['admin'])

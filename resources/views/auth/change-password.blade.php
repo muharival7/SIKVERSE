@@ -40,6 +40,7 @@
                 type="password"
                 class="mt-1 block w-full"
                 required
+                minlength="8"
                 autocomplete="new-password"
             />
             <p class="mt-1 text-xs text-gray-500">

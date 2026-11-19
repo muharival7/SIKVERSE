@@ -21,7 +21,7 @@ class SantriSpreadsheet
     private const MAX_ARCHIVE_FILES = 2000;
 
     /**
-     * @return list<array{row: int, sheet: string, nomor_induk: string, nama: string, jenis_kelamin: string, program_studi: string, kelompok: string, periode: string, status: string, email: string}>
+     * @return list<array{row: int, sheet: string, nomor_induk: string, nama: string, program_studi: string, kelompok: string, periode: string, status: string, email: string}>
      */
     public function read(string $filePath): array
     {
@@ -120,7 +120,6 @@ class SantriSpreadsheet
                     $values = array_fill_keys([
                         'nomor_induk',
                         'nama',
-                        'jenis_kelamin',
                         'program_studi',
                         'kelompok',
                         'periode',
@@ -178,7 +177,6 @@ class SantriSpreadsheet
         $headers = [
             'Nomor Induk/NIM',
             'Nama Santri',
-            'Jenis Kelamin',
             'Program Studi',
             'Kelompok',
             'Periode',
@@ -253,9 +251,6 @@ class SantriSpreadsheet
             'nama' => 'nama',
             'nama santri' => 'nama',
             'nama lengkap' => 'nama',
-            'jenis kelamin' => 'jenis_kelamin',
-            'jenis kelamin santri' => 'jenis_kelamin',
-            'gender' => 'jenis_kelamin',
             'program studi' => 'program_studi',
             'prodi' => 'program_studi',
             'program' => 'program_studi',
@@ -591,10 +586,10 @@ class SantriSpreadsheet
     {
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             .'<worksheet xmlns="'.self::MAIN_NS.'">'
-            .'<dimension ref="A1:H1"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
-            .'<cols><col min="1" max="1" width="22" customWidth="1" style="2"/><col min="2" max="2" width="28" customWidth="1"/><col min="3" max="8" width="20" customWidth="1"/></cols>'
+            .'<dimension ref="A1:G1"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
+            .'<cols><col min="1" max="1" width="22" customWidth="1" style="2"/><col min="2" max="2" width="28" customWidth="1"/><col min="3" max="7" width="20" customWidth="1"/></cols>'
             .'<sheetData><row r="1" ht="26" customHeight="1">'.$headerCells.'</row></sheetData>'
-            .'<autoFilter ref="A1:H1"/><pageMargins left="0.25" right="0.25" top="0.5" bottom="0.5" header="0.2" footer="0.2"/>'
+            .'<autoFilter ref="A1:G1"/><pageMargins left="0.25" right="0.25" top="0.5" bottom="0.5" header="0.2" footer="0.2"/>'
             .'</worksheet>';
     }
 }

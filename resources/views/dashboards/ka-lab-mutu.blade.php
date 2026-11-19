@@ -10,7 +10,7 @@
         <div class="sd-welcome-copy">
             <span class="sd-eyebrow">SIKVERSE · MONITORING MUTU</span>
             <h1 id="kalab-welcome-title">Selamat datang, Ka-Lab Mutu</h1>
-            <p>Di halaman ini Anda dapat melihat laporan jumlah mahasiswa yang lulus setiap tahun, membandingkan antartahun, serta memantau perubahan kelulusan sebagai bahan evaluasi mutu.</p>
+            <p>Di halaman ini Anda dapat melihat laporan jumlah mahasiswa yang lulus setiap tahun, membandingkan antartahun, serta memantau perubahan kelulusan sebagai bahan evaluasi mutu. Ambang kehadiran: {{ $minimumPercentageDisplay }} dari pertemuan Terlaksana.</p>
         </div>
     </section>
 
@@ -20,7 +20,7 @@
             <div>
                 <span class="sd-section-kicker">TAHUN {{ $graduationCurrentYear }}</span>
                 <h2>Total Lulusan Tahun Ini</h2>
-                <p><strong>{{ number_format($graduationCurrentSummary['lulus']) }}</strong> dari {{ number_format($graduationCurrentSummary['total']) }} mahasiswa</p>
+                <p><strong>{{ number_format($graduationCurrentSummary['lulus']) }}</strong> dari {{ number_format($graduationCurrentSummary['total']) }} mahasiswa · {{ number_format($graduationCurrentSummary['belum_ditetapkan']) }} belum ditetapkan</p>
             </div>
         </article>
 

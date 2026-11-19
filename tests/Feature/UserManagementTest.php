@@ -78,7 +78,7 @@ test('an admin can create a staff account with a matching role profile', functio
         ->post(route('users.store'), [
             'name' => 'Instruktur Baru',
             'email' => 'instruktur@example.test',
-            'nip' => 'NIP-TEST-002',
+            'nip' => '900003',
             'program_studi' => 'Sistem Informasi',
             'role' => UserRole::InfrastrukturSik->value,
         ])

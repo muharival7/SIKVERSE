@@ -31,5 +31,35 @@
             </dl>
         </div>
     </div>
+
+    @if ($santri->anggotaPeriode->isNotEmpty())
+        <div class="card shadow-sm mt-4">
+            <div class="card-header bg-white py-3">
+                <h2 class="h5 fw-bold mb-0">Kelompok & Periode SIK</h2>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead style="background:#fbf4f3;color:#760d12">
+                        <tr>
+                            <th>Periode</th>
+                            <th>Kelompok</th>
+                            <th>Tanggal Masuk</th>
+                            <th>Status Keanggotaan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($santri->anggotaPeriode->sortByDesc('id') as $membership)
+                            <tr>
+                                <td>{{ $membership->periode?->nama_periode ?? '—' }}</td>
+                                <td>{{ $membership->kelompok?->nama_kelompok ?? '—' }}</td>
+                                <td>{{ $membership->tanggal_masuk?->format('Y-m-d') ?? '—' }}</td>
+                                <td>{{ $membership->status }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    @endif
 </div>
 @endsection

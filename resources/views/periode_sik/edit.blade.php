@@ -37,6 +37,7 @@
                             <input type="text"
                                    name="nama_periode"
                                    value="{{ old('nama_periode', $periodeSik->nama_periode) }}"
+                                   required
                                    class="w-full rounded-lg border-gray-300 focus:border-[#800020] focus:ring-[#800020]">
 
                             @error('nama_periode')
@@ -54,6 +55,7 @@
                                    min="2000"
                                    max="2100"
                                    value="{{ old('tahun', $periodeSik->tahun) }}"
+                                   required
                                    class="w-full rounded-lg border-gray-300 focus:border-[#800020] focus:ring-[#800020]">
 
                             @error('tahun')
@@ -71,6 +73,7 @@
                                 <input type="date"
                                        name="tanggal_mulai"
                                        value="{{ old('tanggal_mulai', $periodeSik->tanggal_mulai->format('Y-m-d')) }}"
+                                       required
                                        class="w-full rounded-lg border-gray-300 focus:border-[#800020] focus:ring-[#800020]">
 
                                 @error('tanggal_mulai')
@@ -86,6 +89,7 @@
                                 <input type="date"
                                        name="tanggal_selesai"
                                        value="{{ old('tanggal_selesai', $periodeSik->tanggal_selesai->format('Y-m-d')) }}"
+                                       required
                                        class="w-full rounded-lg border-gray-300 focus:border-[#800020] focus:ring-[#800020]">
 
                                 @error('tanggal_selesai')
@@ -101,6 +105,7 @@
                             </label>
 
                             <select name="status"
+                                    required
                                     class="w-full rounded-lg border-gray-300 focus:border-[#800020] focus:ring-[#800020]">
 
                                 <option value="Persiapan" {{ old('status', $periodeSik->status) === 'Persiapan' ? 'selected' : '' }}>

@@ -40,28 +40,28 @@
                                 <label class="form-label" for="mapel-{{ $catatan->id }}">Mata pelajaran</label>
                                 <select class="form-select" id="mapel-{{ $catatan->id }}" name="mata_pelajaran_id" required>
                                     @foreach ($mataPelajaran as $mapel)
-                                        <option value="{{ $mapel->id }}" @selected($catatan->mata_pelajaran_id === $mapel->id)>{{ $mapel->nama_mapel }}</option>
+                                        <option value="{{ $mapel->id }}" @selected((string) old('mata_pelajaran_id', $catatan->mata_pelajaran_id) === (string) $mapel->id)>{{ $mapel->nama_mapel }}</option>
                                     @endforeach
                                 </select>
                             </div>
                             <div class="col-6 col-md-2">
                                 <label class="form-label" for="semester-{{ $catatan->id }}">Semester</label>
-                                <input class="form-control" id="semester-{{ $catatan->id }}" name="semester" value="{{ $catatan->semester }}" maxlength="50" required>
+                                <input class="form-control" id="semester-{{ $catatan->id }}" name="semester" value="{{ old('semester', $catatan->semester) }}" maxlength="50" required>
                             </div>
                             <div class="col-6 col-md-2">
                                 <label class="form-label" for="tahun-{{ $catatan->id }}">Tahun ajaran</label>
-                                <input class="form-control" id="tahun-{{ $catatan->id }}" name="tahun_ajaran" value="{{ $catatan->tahun_ajaran }}" maxlength="20" required>
+                                <input class="form-control" id="tahun-{{ $catatan->id }}" name="tahun_ajaran" value="{{ old('tahun_ajaran', $catatan->tahun_ajaran) }}" maxlength="20" required>
                             </div>
                             <div class="col-6 col-md-2">
                                 <label class="form-label" for="nilai-{{ $catatan->id }}">Nilai (0–100)</label>
-                                <input class="form-control" id="nilai-{{ $catatan->id }}" type="number" name="nilai" min="0" max="100" step="0.01" value="{{ $catatan->nilai }}" required>
+                                <input class="form-control" id="nilai-{{ $catatan->id }}" type="number" name="nilai" min="0" max="100" step="0.01" value="{{ old('nilai', $catatan->nilai) }}" required>
                             </div>
                             <div class="col-6 col-md-2">
                                 <button class="btn btn-outline-primary w-100" type="submit">Simpan</button>
                             </div>
                             <div class="col-12">
                                 <label class="form-label" for="keterangan-{{ $catatan->id }}">Keterangan</label>
-                                <textarea class="form-control" id="keterangan-{{ $catatan->id }}" name="keterangan" rows="2" maxlength="1000">{{ $catatan->keterangan }}</textarea>
+                                <textarea class="form-control" id="keterangan-{{ $catatan->id }}" name="keterangan" rows="2" maxlength="1000">{{ old('keterangan', $catatan->keterangan) }}</textarea>
                             </div>
                         </div>
                     </form>
@@ -81,28 +81,28 @@
                                     <select class="form-select" id="mapel-baru-{{ $santri->id }}" name="mata_pelajaran_id" required>
                                         <option value="">Pilih mata pelajaran</option>
                                         @foreach ($mataPelajaran as $mapel)
-                                            <option value="{{ $mapel->id }}">{{ $mapel->nama_mapel }}</option>
+                                            <option value="{{ $mapel->id }}" @selected((string) old('mata_pelajaran_id') === (string) $mapel->id)>{{ $mapel->nama_mapel }}</option>
                                         @endforeach
                                     </select>
                                 </div>
                                 <div class="col-6 col-md-2">
                                     <label class="form-label" for="semester-baru-{{ $santri->id }}">Semester</label>
-                                    <input class="form-control" id="semester-baru-{{ $santri->id }}" name="semester" maxlength="50" required>
+                                    <input class="form-control" id="semester-baru-{{ $santri->id }}" name="semester" value="{{ old('semester') }}" maxlength="50" required>
                                 </div>
                                 <div class="col-6 col-md-2">
                                     <label class="form-label" for="tahun-baru-{{ $santri->id }}">Tahun ajaran</label>
-                                    <input class="form-control" id="tahun-baru-{{ $santri->id }}" name="tahun_ajaran" maxlength="20" placeholder="2026/2027" required>
+                                    <input class="form-control" id="tahun-baru-{{ $santri->id }}" name="tahun_ajaran" value="{{ old('tahun_ajaran', '2026/2027') }}" maxlength="20" placeholder="2026/2027" required>
                                 </div>
                                 <div class="col-6 col-md-2">
                                     <label class="form-label" for="nilai-baru-{{ $santri->id }}">Nilai (0–100)</label>
-                                    <input class="form-control" id="nilai-baru-{{ $santri->id }}" type="number" name="nilai" min="0" max="100" step="0.01" required>
+                                    <input class="form-control" id="nilai-baru-{{ $santri->id }}" type="number" name="nilai" min="0" max="100" step="0.01" value="{{ old('nilai') }}" required>
                                 </div>
                                 <div class="col-6 col-md-2">
                                     <button class="btn btn-primary w-100" type="submit">Simpan</button>
                                 </div>
                                 <div class="col-12">
                                     <label class="form-label" for="keterangan-baru-{{ $santri->id }}">Keterangan</label>
-                                    <textarea class="form-control" id="keterangan-baru-{{ $santri->id }}" name="keterangan" rows="2" maxlength="1000"></textarea>
+                                    <textarea class="form-control" id="keterangan-baru-{{ $santri->id }}" name="keterangan" rows="2" maxlength="1000">{{ old('keterangan') }}</textarea>
                                 </div>
                             </div>
                         </form>

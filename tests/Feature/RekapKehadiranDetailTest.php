@@ -53,20 +53,27 @@ function makeRekapDetailFixture(): array
         'jenis_kegiatan' => 'Kelas',
         'status' => 'Aktif',
     ]);
-    $meeting = Pertemuan::query()->create([
-        'kegiatan_id' => $activity->id,
-        'pertemuan_ke' => 1,
-        'tanggal' => '2026-11-05',
-        'status' => 'Terlaksana',
-    ]);
-    AbsensiSik::query()->create([
-        'anggota_periode_sik_id' => $membership->id,
-        'pertemuan_id' => $meeting->id,
-        'waktu_masuk' => '08:17:00',
-        'waktu_pulang' => '12:03:00',
-        'metode_absensi' => 'Manual',
-        'status' => 'Hadir',
-    ]);
+    $statuses = array_merge(
+        array_fill(0, 14, 'Hadir'),
+        ['Izin', 'Sakit']
+    );
+
+    foreach ($statuses as $index => $status) {
+        $meeting = Pertemuan::query()->create([
+            'kegiatan_id' => $activity->id,
+            'pertemuan_ke' => $index + 1,
+            'tanggal' => sprintf('2026-11-%02d', $index + 1),
+            'status' => 'Terlaksana',
+        ]);
+        AbsensiSik::query()->create([
+            'anggota_periode_sik_id' => $membership->id,
+            'pertemuan_id' => $meeting->id,
+            'waktu_masuk' => '08:17:00',
+            'waktu_pulang' => '12:03:00',
+            'metode_absensi' => 'Manual',
+            'status' => $status,
+        ]);
+    }
     $rekap = RekapKehadiranSik::query()->create([
         'anggota_periode_sik_id' => $membership->id,
         'kegiatan_id' => $activity->id,

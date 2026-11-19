@@ -45,11 +45,10 @@ class AnggotaPeriodeSikController extends Controller
 
     public function create(): View
     {
-        return view('anggota-periode-sik.create', [
-            'santri' => Santri::orderBy('nama')->get(),
-            'periode' => PeriodeSik::orderByDesc('tahun')->get(),
-            'kelompok' => Kelompok::with('periode')->orderBy('nama_kelompok')->get(),
-        ]);
+        return view('anggota-periode-sik.create', array_merge(
+            ['santri' => Santri::orderBy('nama')->get()],
+            $this->membershipFormOptions()
+        ));
     }
 
     public function store(Request $request): RedirectResponse
@@ -62,12 +61,13 @@ class AnggotaPeriodeSikController extends Controller
 
     public function edit(AnggotaPeriodeSik $anggotaPeriodeSik): View
     {
-        return view('anggota-periode-sik.edit', [
-            'anggota' => $anggotaPeriodeSik,
-            'santri' => Santri::orderBy('nama')->get(),
-            'periode' => PeriodeSik::orderByDesc('tahun')->get(),
-            'kelompok' => Kelompok::with('periode')->orderBy('nama_kelompok')->get(),
-        ]);
+        return view('anggota-periode-sik.edit', array_merge(
+            [
+                'anggota' => $anggotaPeriodeSik,
+                'santri' => Santri::orderBy('nama')->get(),
+            ],
+            $this->membershipFormOptions($anggotaPeriodeSik)
+        ));
     }
 
     public function update(Request $request, AnggotaPeriodeSik $anggotaPeriodeSik): RedirectResponse
@@ -112,6 +112,39 @@ class AnggotaPeriodeSikController extends Controller
     }
 
     /**
+     * @return array{periode: mixed, kelompok: mixed}
+     */
+    private function membershipFormOptions(?AnggotaPeriodeSik $anggota = null): array
+    {
+        $periodes = PeriodeSik::query()
+            ->where('status', 'Aktif')
+            ->orderByDesc('tahun')
+            ->get();
+
+        if ($anggota?->periode instanceof PeriodeSik && ! $periodes->contains('id', $anggota->periode_sik_id)) {
+            $periodes->push($anggota->periode);
+            $periodes = $periodes->sortByDesc('tahun')->values();
+        }
+
+        $kelompoks = Kelompok::query()
+            ->with('periode')
+            ->where('status', 'Aktif')
+            ->whereHas('periode', fn ($query) => $query->where('status', 'Aktif'))
+            ->orderBy('nama_kelompok')
+            ->get();
+
+        if ($anggota?->kelompok instanceof Kelompok && ! $kelompoks->contains('id', $anggota->kelompok_id)) {
+            $kelompoks->push($anggota->kelompok);
+            $kelompoks = $kelompoks->sortBy('nama_kelompok')->values();
+        }
+
+        return [
+            'periode' => $periodes,
+            'kelompok' => $kelompoks,
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function validatedData(Request $request, ?AnggotaPeriodeSik $anggota = null): array
@@ -124,14 +157,40 @@ class AnggotaPeriodeSikController extends Controller
                     ->where('periode_sik_id', $request->input('periode_sik_id'))
                     ->ignore($anggota?->id),
             ],
-            'periode_sik_id' => ['required', 'exists:periode_sik,id'],
+            'periode_sik_id' => [
+                'required',
+                'exists:periode_sik,id',
+                function (string $attribute, mixed $value, $fail) use ($anggota): void {
+                    if ((string) $value === (string) $anggota?->periode_sik_id) {
+                        return;
+                    }
+
+                    if (! PeriodeSik::query()->whereKey($value)->where('status', 'Aktif')->exists()) {
+                        $fail('Periode yang dipilih tidak aktif.');
+                    }
+                },
+            ],
             'kelompok_id' => [
                 'required',
                 Rule::exists('kelompok', 'id')
                     ->where('periode_sik_id', $request->input('periode_sik_id')),
+                function (string $attribute, mixed $value, $fail) use ($anggota): void {
+                    if ((string) $value === (string) $anggota?->kelompok_id) {
+                        return;
+                    }
+
+                    if (! Kelompok::query()->whereKey($value)->where('status', 'Aktif')->exists()) {
+                        $fail('Kelompok yang dipilih tidak aktif.');
+                    }
+                },
             ],
             'tanggal_masuk' => ['nullable', 'date'],
             'status' => ['required', Rule::in(['Aktif', 'Tidak Aktif'])],
+        ], [
+            'santri_id.unique' => 'Santri sudah terdaftar pada periode ini. Gunakan menu edit untuk memindahkan kelompok.',
+            'periode_sik_id.exists' => 'Periode yang dipilih tidak ditemukan.',
+            'kelompok_id.required' => 'Kelompok wajib dipilih.',
+            'kelompok_id.exists' => 'Kelompok harus berada pada periode yang dipilih.',
         ]);
     }
 }

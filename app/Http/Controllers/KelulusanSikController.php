@@ -22,7 +22,11 @@ class KelulusanSikController extends Controller
             'anggotaPeriodeSik.santri',
             'anggotaPeriodeSik.periode',
             'anggotaPeriodeSik.kelompok',
-        ])->latest()->paginate(10);
+        ])->latest()->orderByDesc('id')->paginate(10);
+
+        $kelulusan->getCollection()->transform(function (KelulusanSik $item): KelulusanSik {
+            return $this->decorateGraduation($item);
+        });
 
         return view('kelulusan-sik.index', compact('kelulusan'));
     }
@@ -32,7 +36,11 @@ class KelulusanSikController extends Controller
         $anggota = AnggotaPeriodeSik::with(['santri', 'periode', 'kelompok'])
             ->whereDoesntHave('kelulusan')
             ->where('status', 'Aktif')
-            ->get();
+            ->orderBy('id')
+            ->get()
+            ->map(function (AnggotaPeriodeSik $member): AnggotaPeriodeSik {
+                return $this->decorateAnggota($member);
+            });
 
         return view('kelulusan-sik.create', compact('anggota'));
     }
@@ -52,7 +60,11 @@ class KelulusanSikController extends Controller
                 $query->whereDoesntHave('kelulusan')
                     ->orWhereKey($kelulusanSik->anggota_periode_sik_id);
             })
-            ->get();
+            ->orderBy('id')
+            ->get()
+            ->map(function (AnggotaPeriodeSik $member): AnggotaPeriodeSik {
+                return $this->decorateAnggota($member);
+            });
 
         return view('kelulusan-sik.edit', [
             'kelulusan' => $kelulusanSik,
@@ -117,20 +129,55 @@ class KelulusanSikController extends Controller
             $anggota = AnggotaPeriodeSik::query()->findOrFail($validated['anggota_periode_sik_id']);
             $metric = $this->attendanceRecapService->calculateForAnggota((int) $anggota->id);
 
-            if (! $metric['tersedia']) {
-                throw ValidationException::withMessages([
-                    'status' => 'Santri tidak dapat dinyatakan lulus karena belum ada pertemuan Terlaksana pada kegiatan yang diikuti.',
-                ]);
-            }
-
             if (! $metric['memenuhi']) {
-                $minimumPercentage = $this->attendanceRecapService->minimumPercentage();
                 throw ValidationException::withMessages([
-                    'status' => "Santri harus memenuhi ambang kehadiran {$minimumPercentage}% pada pertemuan Terlaksana. Persentase saat ini ".number_format((float) $metric['persentase'], 2, ',', '.').'%.',
+                    'status' => 'Santri tidak dapat dinyatakan lulus. '.$this->attendanceRecapService->thresholdRequirementMessage($metric),
                 ]);
             }
         }
 
         return $validated;
+    }
+
+    private function decorateGraduation(KelulusanSik $kelulusan): KelulusanSik
+    {
+        $evaluasi = $this->attendanceRecapService->graduationEvaluation(
+            $kelulusan,
+            $kelulusan->anggotaPeriodeSik
+        );
+
+        $kelulusan->setAttribute('evaluasi', $evaluasi);
+        $kelulusan->setAttribute('evaluasi_label', $evaluasi['label']);
+        $kelulusan->setAttribute('evaluasi_badge_class', match ($evaluasi['code']) {
+            AttendanceRecapService::GRADUATION_PASSED => 'bg-success',
+            AttendanceRecapService::GRADUATION_FAILED => 'bg-danger',
+            default => 'bg-secondary',
+        });
+        $kelulusan->setAttribute('attendance', $evaluasi['metric']);
+        $kelulusan->setAttribute('attendance_display', $this->formatMetricPercentage($evaluasi['metric']));
+        $kelulusan->setAttribute('alasan_kehadiran', $evaluasi['alasan']);
+
+        return $kelulusan;
+    }
+
+    private function decorateAnggota(AnggotaPeriodeSik $member): AnggotaPeriodeSik
+    {
+        $metric = $this->attendanceRecapService->calculateForAnggota((int) $member->id);
+
+        $member->setAttribute('attendance_metric', $metric);
+        $member->setAttribute('attendance_status_display', $metric['status']);
+        $member->setAttribute('attendance_display', $this->formatMetricPercentage($metric));
+
+        return $member;
+    }
+
+    /** @param array<string, mixed> $metric */
+    private function formatMetricPercentage(array $metric): string
+    {
+        if ($metric['persentase'] === null) {
+            return (string) $metric['status'];
+        }
+
+        return $this->attendanceRecapService->formatPercentage((float) $metric['persentase']).'%';
     }
 }

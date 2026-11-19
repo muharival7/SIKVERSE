@@ -6,10 +6,10 @@ use App\Enums\UserRole;
 use App\Models\KelulusanSik;
 use App\Models\SertifikatSik;
 use App\Services\AttendanceRecapService;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -32,7 +32,7 @@ class SertifikatSikController extends Controller
 
     public function create(): View
     {
-        $kelulusan = $this->eligibleGraduations()->get();
+        $kelulusan = $this->eligibleGraduations();
 
         return view('sertifikat-sik.create', compact('kelulusan'));
     }
@@ -70,16 +70,15 @@ class SertifikatSikController extends Controller
             'kelulusan.anggotaPeriodeSik.periode',
         ]);
 
-        $kelulusan = $this->eligibleGraduations($sertifikatSik)
-            ->get();
+        $kelulusan = $this->eligibleGraduations($sertifikatSik);
 
         if (! $kelulusan->contains('id', $sertifikatSik->kelulusan_sik_id)) {
-            $kelulusan->push(
+            $kelulusan->push($this->decorateGraduation(
                 KelulusanSik::with([
                     'anggotaPeriodeSik.santri',
                     'anggotaPeriodeSik.periode',
                 ])->findOrFail($sertifikatSik->kelulusan_sik_id)
-            );
+            ));
         }
 
         return view('sertifikat-sik.edit', [
@@ -192,20 +191,25 @@ class SertifikatSikController extends Controller
     }
 
     /**
-     * @return Builder<KelulusanSik>
+     * Catatan kelulusan yang layak mendapat sertifikat memakai evaluasi yang
+     * sama dengan dashboard dan laporan. Catatan lama yang sudah memiliki
+     * sertifikat tetap dikembalikan saat halaman edit dibuka.
+     *
+     * @return Collection<int, KelulusanSik>
      */
-    private function eligibleGraduations(?SertifikatSik $sertifikat = null): Builder
+    private function eligibleGraduations(?SertifikatSik $sertifikat = null): Collection
     {
-        return KelulusanSik::with(['anggotaPeriodeSik.santri', 'anggotaPeriodeSik.periode'])
-            ->where('status', 'Lulus')
-            ->meetsAttendanceThreshold()
-            ->where(function ($query) use ($sertifikat): void {
-                $query->whereDoesntHave('sertifikat');
-
-                if ($sertifikat !== null) {
-                    $query->orWhereKey($sertifikat->kelulusan_sik_id);
+        return $this->attendanceRecapService->graduationEvaluations()
+            ->filter(fn (array $row): bool => $row['evaluasi']['code'] === AttendanceRecapService::GRADUATION_PASSED)
+            ->map(fn (array $row): KelulusanSik => $this->decorateGraduation($row['kelulusan']))
+            ->filter(function (KelulusanSik $kelulusan) use ($sertifikat): bool {
+                if ($sertifikat !== null && (int) $kelulusan->id === (int) $sertifikat->kelulusan_sik_id) {
+                    return true;
                 }
-            });
+
+                return $kelulusan->sertifikat === null;
+            })
+            ->values();
     }
 
     /**
@@ -235,19 +239,36 @@ class SertifikatSikController extends Controller
         $validated = $request->validate($rules);
 
         if ($sertifikat === null || (int) $validated['kelulusan_sik_id'] !== (int) $sertifikat->kelulusan_sik_id) {
-            $isEligible = KelulusanSik::query()
-                ->whereKey($validated['kelulusan_sik_id'])
-                ->where('status', 'Lulus')
-                ->meetsAttendanceThreshold()
-                ->exists();
+            $kelulusan = KelulusanSik::query()
+                ->with('anggotaPeriodeSik')
+                ->findOrFail($validated['kelulusan_sik_id']);
+            $evaluasi = $this->attendanceRecapService->graduationEvaluation(
+                $kelulusan,
+                $kelulusan->anggotaPeriodeSik
+            );
 
-            if (! $isEligible) {
+            if ($evaluasi['code'] !== AttendanceRecapService::GRADUATION_PASSED) {
                 throw ValidationException::withMessages([
-                    'kelulusan_sik_id' => 'Sertifikat hanya dapat diterbitkan untuk santri yang memenuhi ambang kehadiran.',
+                    'kelulusan_sik_id' => 'Sertifikat hanya dapat diterbitkan untuk catatan Lulus yang memenuhi ambang kehadiran. '.$evaluasi['alasan'],
                 ]);
             }
         }
 
         return $validated;
+    }
+
+    private function decorateGraduation(KelulusanSik $kelulusan): KelulusanSik
+    {
+        $evaluasi = $this->attendanceRecapService->graduationEvaluation(
+            $kelulusan,
+            $kelulusan->anggotaPeriodeSik
+        );
+
+        $kelulusan->setAttribute('evaluasi', $evaluasi);
+        $kelulusan->setAttribute('evaluasi_label', $evaluasi['label']);
+        $kelulusan->setAttribute('alasan_kehadiran', $evaluasi['alasan']);
+        $kelulusan->setAttribute('attendance', $evaluasi['metric']);
+
+        return $kelulusan;
     }
 }

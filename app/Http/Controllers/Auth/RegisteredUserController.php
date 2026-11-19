@@ -35,10 +35,12 @@ class RegisteredUserController extends Controller
         $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
-            'nomor_induk' => ['required', 'string', 'max:255', 'unique:santris,nomor_induk'],
+            'nomor_induk' => ['required', 'string', 'max:255', 'regex:/^[0-9]+$/', 'unique:santris,nomor_induk'],
             'program_studi' => ['required', 'string', 'max:255'],
             'jenis_kelamin' => ['required', Rule::in(['Laki-laki', 'Perempuan'])],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
+        ], [
+            'nomor_induk.regex' => 'Nomor Induk/NIM hanya boleh berisi angka 0-9.',
         ]);
 
         $user = DB::transaction(function () use ($request): User {

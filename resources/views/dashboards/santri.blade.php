@@ -50,18 +50,13 @@
 
                 <div class="sd-attendance-overview">
                     <div class="sd-attendance-ring-wrap">
-                        <div class="sd-attendance-ring" role="img" aria-label="Persentase kehadiran {{ $attendancePercentage === null ? 'belum tersedia' : number_format($attendancePercentage, 1) . ' persen' }}" style="--attendance-value: {{ $attendancePercentage ?? 0 }}%;">
+                        <div class="sd-attendance-ring" role="img" aria-label="Persentase kehadiran {{ $attendancePercentageDisplay === '—' ? $graduationEvaluation['metric']['status'] : $attendancePercentageDisplay }}" style="--attendance-value: {{ $attendancePercentage ?? 0 }}%;">
                             <div class="sd-ring-center">
-                                @if ($attendancePercentage === null)
-                                    <strong>—</strong>
-                                    <span>Belum ada data</span>
-                                @else
-                                    <strong>{{ number_format($attendancePercentage, 0) }}%</strong>
-                                    <span>Kehadiran</span>
-                                @endif
+                                <strong>{{ $attendancePercentageDisplay }}</strong>
+                                <span>{{ $attendancePercentageDisplay === '—' ? $graduationEvaluation['metric']['status'] : 'Kehadiran' }}</span>
                             </div>
                         </div>
-                        <span class="sd-ring-caption">Ambang {{ number_format($minimumPercentage, 1, ',', '.') }}% dari pertemuan Terlaksana</span>
+                        <span class="sd-ring-caption">Ambang {{ $minimumPercentageDisplay }} dari pertemuan Terlaksana</span>
                     </div>
 
                     <div class="sd-status-summary" aria-label="Rincian status absensi">
@@ -152,7 +147,7 @@
                                     <div class="sd-activity-progress" role="img" aria-label="{{ $recap['persentase_display'] }} kehadiran">
                                         <span style="width: {{ $recap['persentase'] ?? 0 }}%"></span>
                                     </div>
-                                    <strong class="sd-activity-percent">{{ $recap['persentase'] === null ? '—' : number_format($recap['persentase'], 0).'%' }}</strong>
+                                    <strong class="sd-activity-percent">{{ $recap['persentase_display'] }}</strong>
                                 </div>
                             @endforeach
                         </div>
@@ -175,23 +170,19 @@
                     <span class="sd-graduation-icon"><x-sik-icon name="check" /></span>
                 </div>
 
-                @if ($kelulusan)
-                    @php
-                        $isGraduated = $kelulusan->status === 'Lulus';
-                        $graduationClass = $isGraduated ? 'success' : ($kelulusan->status === 'Tidak Lulus' ? 'danger' : 'pending');
-                    @endphp
-                    <div class="sd-graduation-status {{ $graduationClass }}">
-                        <strong>{{ $kelulusan->status }}</strong>
-                        <span>{{ $kelulusan->keterangan ?: ($isGraduated ? 'Selamat! Kamu telah memenuhi syarat kelulusan.' : 'Status kelulusan kegiatan SIK kamu.') }}</span>
-                    </div>
-                    @if ($kelulusan->tanggal_kelulusan)
-                        <p class="sd-graduation-date">Ditetapkan {{ $kelulusan->tanggal_kelulusan->locale('id')->translatedFormat('d F Y') }}</p>
-                    @endif
-                @else
-                    <div class="sd-graduation-status pending">
-                        <strong>Menunggu evaluasi</strong>
-                        <span>Status kelulusan akan tampil setelah hasil evaluasi diterbitkan.</span>
-                    </div>
+                @php
+                    $graduationClass = match ($graduationEvaluation['code']) {
+                        \App\Services\AttendanceRecapService::GRADUATION_PASSED => 'success',
+                        \App\Services\AttendanceRecapService::GRADUATION_FAILED => 'danger',
+                        default => 'pending',
+                    };
+                @endphp
+                <div class="sd-graduation-status {{ $graduationClass }}">
+                    <strong>{{ $graduationEvaluation['label'] }}</strong>
+                    <span>{{ $graduationEvaluation['alasan'] }}</span>
+                </div>
+                @if ($kelulusan?->tanggal_kelulusan)
+                    <p class="sd-graduation-date">Catatan tersimpan: {{ $kelulusan->status }} · {{ $kelulusan->tanggal_kelulusan->locale('id')->translatedFormat('d F Y') }}</p>
                 @endif
             </section>
 
@@ -207,6 +198,9 @@
                             Sertifikat akan muncul di sini setelah diterbitkan.
                         @endif
                     </p>
+                    @if ($sertifikat && $graduationEvaluation['code'] !== \App\Services\AttendanceRecapService::GRADUATION_PASSED)
+                        <p class="small text-muted mb-0">Berkas lama tetap tersedia; evaluasi kehadiran terbaru: {{ $graduationEvaluation['label'] }}.</p>
+                    @endif
                 </div>
                 @if ($sertifikat)
                     <a class="sd-button sd-button-green" href="{{ route('sertifikat-sik.download', $sertifikat) }}">Unduh sertifikat <x-sik-icon name="download" /></a>

@@ -27,10 +27,12 @@
                     <hr class="my-4">
                     <h3 class="h6 fw-bold">Ketentuan data</h3>
                     <ul class="small text-muted ps-3 mb-0">
-                        <li><strong>Wajib:</strong> NIM, Nama, Jenis Kelamin, Kelompok, dan periode yang dapat dikenali.</li>
+                        <li><strong>Wajib:</strong> NIM, Nama, Kelompok, dan periode yang dapat dikenali.</li>
+                        <li><strong>NIM:</strong> Hanya angka 0-9. Awalan 0 harus tetap ditulis dan kolom sebaiknya bertipe teks.</li>
+                        <li>Jenis kelamin tidak perlu diisi pada import; data jenis kelamin lama tetap dipertahankan.</li>
                         <li>Header dapat memakai nama seperti NIM/Nomor Induk, Nama, Program Studi, Kelompok/Kelas, dan Periode.</li>
                         <li>Judul semester dan tahun di atas tabel dapat digunakan untuk mengenali periode.</li>
-                        <li>Kelompok harus sudah aktif pada periode tersebut. Buat kelompok dan tetapkan instruktur sebelum mengimpor.</li>
+                        <li>Kelompok harus sudah aktif pada periode tersebut. Perbaiki nama kelompok pada pratinjau bila perlu; kelompok tidak dibuat atau diganti otomatis.</li>
                         <li>Program Studi boleh kosong. Status kosong mengikuti status awal database: Aktif.</li>
                         @if (config('sik.auth.require_email_verification'))
                             <li class="text-danger">Email asli wajib diisi karena verifikasi email aktif.</li>

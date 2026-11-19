@@ -1,7 +1,7 @@
 <div class="row g-3">
     <div class="col-12 col-md-6">
         <label for="nomor_induk" class="form-label">Nomor Induk / NIM *</label>
-        <input id="nomor_induk" name="nomor_induk" type="text" value="{{ old('nomor_induk', $santri?->nomor_induk) }}" class="form-control @error('nomor_induk') is-invalid @enderror" maxlength="255" required autocomplete="off">
+        <input id="nomor_induk" name="nomor_induk" type="text" value="{{ old('nomor_induk', $santri?->nomor_induk) }}" class="form-control @error('nomor_induk') is-invalid @enderror" maxlength="255" inputmode="numeric" pattern="[0-9]*" title="Nomor Induk/NIM hanya boleh berisi angka 0-9." required autocomplete="off">
         @error('nomor_induk')<div class="invalid-feedback">{{ $message }}</div>@enderror
     </div>
     <div class="col-12 col-md-6">

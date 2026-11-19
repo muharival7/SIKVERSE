@@ -78,7 +78,7 @@
                                     <td>{{ $kelompok?->nama_kelompok ?? '—' }}</td>
                                     <td>
                                         <select name="status[{{ $anggota->id }}]" class="form-select form-select-sm"
-                                            {{ $isExisting ? 'disabled' : '' }}
+                                            {{ $isExisting ? 'disabled' : 'required' }}
                                         >
                                             <option value="Hadir" {{ old("status.{$anggota->id}", $existingStatus ?? 'Hadir') === 'Hadir' ? 'selected' : '' }}>Hadir</option>
                                             <option value="Izin" {{ old("status.{$anggota->id}", $existingStatus ?? '') === 'Izin' ? 'selected' : '' }}>Izin</option>
@@ -93,6 +93,7 @@
                                         <input type="text" name="keterangan[{{ $anggota->id }}]"
                                             value="{{ old("keterangan.{$anggota->id}") ?? '' }}"
                                             class="form-control form-control-sm"
+                                            maxlength="1000"
                                             placeholder="Keterangan opsional"
                                             {{ $isExisting ? 'disabled' : '' }}
                                         >

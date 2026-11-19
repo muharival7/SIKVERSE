@@ -331,6 +331,8 @@ class RabuMengajiImportController extends Controller
 
             if ($nim === '') {
                 $reasons[] = 'NIM wajib diisi.';
+            } elseif (preg_match('/^[0-9]+$/', $nim) !== 1) {
+                $reasons[] = 'NIM hanya boleh berisi angka 0-9.';
             }
 
             if ($namaSantri === '') {
@@ -362,7 +364,7 @@ class RabuMengajiImportController extends Controller
                     ->first();
 
                 if ($anggota === null) {
-                    $reasons[] = 'Santri '.$nim.' tidak memiliki keanggiatan periode SIK yang aktif.';
+                    $reasons[] = 'Santri '.$nim.' tidak memiliki keanggotaan periode SIK yang aktif.';
                 } else {
                     if ($sharedActivity) {
                         $kelompok = $anggota->kelompok;

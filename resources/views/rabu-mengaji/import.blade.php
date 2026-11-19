@@ -96,7 +96,7 @@
                         <li class="mb-2"><strong>Kolom opsional:</strong> Keterangan</li>
                         <li class="mb-2"><strong>Status:</strong> Hadir, Izin, Sakit, Alpha</li>
                         <li class="mb-2"><strong>Tanggal:</strong> Harus sama dengan tanggal pertemuan yang dipilih</li>
-                        <li class="mb-2"><strong>NIM:</strong> Harus terdaftar sebagai santri aktif</li>
+                        <li class="mb-2"><strong>NIM:</strong> Hanya angka 0-9, awalan 0 tetap ditulis, dan harus terdaftar sebagai santri aktif</li>
                         <li class="mb-2"><strong>Duplikat:</strong> NIM yang sama dalam satu file hanya dihitung sekali</li>
                         <li class="mb-2"><strong>Sudah ada:</strong> NIM yang sudah memiliki absensi pada pertemuan dilewati</li>
                     </ul>

@@ -1,5 +1,9 @@
 @extends('layouts.app')
 
+@php
+    use App\Services\AttendanceRecapService;
+@endphp
+
 @section('content')
 <div class="container-fluid py-4 px-4">
 
@@ -19,7 +23,7 @@
         </div>
 
         <a class="btn btn-outline-secondary"
-           href="{{ route('rekap-kehadiran-sik.index') }}">
+           href="{{ route('rekap-kehadiran-sik.index', $backQuery) }}">
             Kembali ke rekap
         </a>
     </div>
@@ -58,23 +62,24 @@
                 <div class="col-sm-6 col-lg-4">
                     <div class="text-muted small">Nama kegiatan</div>
                     <div class="fw-semibold">
-                        {{ $item->kegiatan?->nama_kegiatan ?? '—' }}
+                        {{ $item->kegiatan?->nama_kegiatan ?? 'Seluruh kegiatan periode' }}
                     </div>
                 </div>
                 <div class="col-sm-6 col-lg-4">
                     <div class="text-muted small">Status pemenuhan batas kehadiran</div>
+                    @php
+                        $statusKehadiran = (string) ($item->status_kehadiran ?? AttendanceRecapService::STATUS_NO_MEETINGS);
+                        $badge = match ($statusKehadiran) {
+                            AttendanceRecapService::STATUS_MET => 'text-bg-success',
+                            AttendanceRecapService::STATUS_UNMET => 'text-bg-warning',
+                            AttendanceRecapService::STATUS_NO_ATTENDANCE => 'text-bg-info',
+                            AttendanceRecapService::STATUS_NO_MEETINGS => 'text-bg-secondary',
+                            default => 'text-bg-secondary',
+                        };
+                    @endphp
                     <div>
-                        @php
-                            $statusKehadiran = $item->status_kehadiran ?? '-';
-                            $badge = match (strtolower($statusKehadiran)) {
-                                'memenuhi', 'lulus', 'memenuhi syarat' => 'text-bg-success',
-                                'belum memenuhi' => 'text-bg-warning',
-                                'tidak memenuhi', 'tidak lulus' => 'text-bg-danger',
-                                default => 'text-bg-secondary',
-                            };
-                        @endphp
                         <span class="badge rounded-pill {{ $badge }}">{{ $statusKehadiran }}</span>
-                        <div class="small text-muted mt-1">Ambang {{ number_format($minimumPercentage, 1, ',', '.') }}% dari pertemuan Terlaksana.</div>
+                        <div class="small text-muted mt-1">Ambang {{ $minimumPercentageDisplay }} dari pertemuan Terlaksana.</div>
                     </div>
                 </div>
             </div>
@@ -88,10 +93,11 @@
             ['Total Izin', $item->jumlah_izin],
             ['Total Sakit', $item->jumlah_sakit],
             ['Total Alpha', $item->jumlah_alpha],
+            ['Total Tidak Lengkap', $item->jumlah_tidak_lengkap],
             ['Total pertemuan Terlaksana', $item->total_pertemuan],
             ['Persentase kehadiran', $item->persentase_display],
         ] as [$label, $value])
-            <div class="col-6 col-md-4 col-xl-2">
+            <div class="col-6 col-md-4 col-xl-3">
                 <div class="card h-100 border-0 shadow-sm">
                     <div class="card-body">
                         <div class="text-muted small">{{ $label }}</div>
@@ -108,6 +114,9 @@
     <div class="card border-0 shadow-sm">
         <div class="card-header bg-white py-3">
             <h2 class="h5 mb-0">Daftar pertemuan dan status kehadiran</h2>
+            <p class="small text-muted mb-0">
+                Pertemuan Terjadwal tetap ditampilkan sebagai informasi dan tidak dihitung dalam persentase.
+            </p>
         </div>
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
@@ -116,27 +125,46 @@
                         <th>No</th>
                         <th>Tanggal pertemuan</th>
                         <th>Pertemuan ke</th>
+                        <th>Kegiatan</th>
                         <th>Status kehadiran</th>
                         <th>Status pertemuan</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @forelse ($riwayat as $catatan)
+                    @forelse ($riwayat as $pertemuan)
+                        @php
+                            $absensiAnggota = $pertemuan->getAttribute('absensi_anggota');
+                            $statusAbsensi = $absensiAnggota?->status;
+                            $badgeAbsensi = match ($statusAbsensi) {
+                                'Hadir' => 'text-bg-success',
+                                'Alpha' => 'text-bg-danger',
+                                null => 'text-bg-secondary',
+                                default => 'text-bg-warning',
+                            };
+                            $badgePertemuan = $pertemuan->status === 'Terlaksana'
+                                ? 'text-bg-success'
+                                : 'text-bg-secondary';
+                        @endphp
                         <tr>
                             <td>{{ $loop->iteration }}</td>
-                            <td>{{ $catatan->pertemuan?->tanggal?->format('d/m/Y') ?? '—' }}</td>
-                            <td>{{ $catatan->pertemuan?->pertemuan_ke ?? '—' }}</td>
+                            <td>{{ $pertemuan->tanggal?->format('d/m/Y') ?? '—' }}</td>
+                            <td>{{ $pertemuan->pertemuan_ke ?? '—' }}</td>
+                            <td>{{ $pertemuan->kegiatan?->nama_kegiatan ?? '—' }}</td>
                             <td>
-                                <span class="badge rounded-pill text-bg-{{ $catatan->status === 'Hadir' ? 'success' : ($catatan->status === 'Alpha' ? 'danger' : 'warning') }}">
-                                    {{ $catatan->status }}
+                                <span class="badge rounded-pill {{ $badgeAbsensi }}">
+                                    {{ $statusAbsensi ?? 'Belum ada catatan kehadiran' }}
                                 </span>
                             </td>
-                            <td>{{ $catatan->pertemuan?->status ?? '—' }}</td>
+                            <td>
+                                <span class="badge rounded-pill {{ $badgePertemuan }}">
+                                    {{ $pertemuan->status ?? '—' }}
+                                </span>
+                            </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" class="text-center text-muted py-5">
-                                Belum ada catatan kehadiran untuk kegiatan ini.
+                            <td colspan="6" class="text-center text-muted py-5">
+                                Belum ada pertemuan pada kegiatan ini.
                             </td>
                         </tr>
                     @endforelse

@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Storage;
  */
 function makeSantriImportUpload(array $dataRows, array $options = []): UploadedFile
 {
-    $headers = $options['headers'] ?? ['Nomor Induk/NIM', 'Nama Santri', 'Jenis Kelamin', 'Program Studi', 'Kelompok', 'Periode', 'Status Santri', 'Email (opsional)'];
+    $headers = $options['headers'] ?? ['Nomor Induk/NIM', 'Nama Santri', 'Program Studi', 'Kelompok', 'Periode', 'Status Santri', 'Email (opsional)'];
     $rows = [...($options['leading_rows'] ?? []), $headers, ...$dataRows];
     $sheets = [];
 
@@ -172,10 +172,10 @@ test('admin can preview and commit valid rows while duplicate and invalid rows a
     $setup = createSantriImportGroup();
 
     $upload = makeSantriImportUpload([
-        ['001234', 'Alya Rahma', 'Perempuan', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', 'alya@example.test'],
-        ['001235', 'Bima Fadli', 'Laki-laki', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', 'bima@example.test'],
-        ['001234', 'Alya Duplikat', 'Perempuan', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', 'alya-duplicate@example.test'],
-        ['001236', '', 'Perempuan', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', 'invalid@example.test'],
+        ['001234', 'Alya Rahma', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', 'alya@example.test'],
+        ['001235', 'Bima Fadli', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', 'bima@example.test'],
+        ['001234', 'Alya Duplikat', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', 'alya-duplicate@example.test'],
+        ['001236', '', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', 'invalid@example.test'],
     ]);
 
     $preview = $this->actingAs($admin)->post(route('santris.import.preview'), ['file' => $upload]);
@@ -204,11 +204,44 @@ test('admin can preview and commit valid rows while duplicate and invalid rows a
     expect($membership->periode_sik_id)->toBe($setup['period']->id)
         ->and($membership->kelompok->instruktur_id)->toBe($setup['instructor']->id);
 
+    $importedSantri = Santri::query()->where('nomor_induk', '001234')->firstOrFail();
+    expect($importedSantri->nomor_induk)->toBe('001234')
+        ->and($importedSantri->jenis_kelamin)->toBeNull();
+
     $credentialsToken = session('santri_credentials_token');
     expect($credentialsToken)->toBeString();
     $credentials = $this->get(route('santris.import.credentials', $credentialsToken));
     $credentials->assertOk()->assertHeader('content-disposition', 'attachment; filename=kredensial-santri.csv');
     expect(session('santri_credentials_token'))->toBeNull();
+});
+
+test('admin sees invalid NIM in import preview and does not create santri', function () {
+    config()->set('sik.auth.require_email_verification', false);
+    Storage::fake('local');
+    $admin = User::factory()->create(['role' => UserRole::Admin]);
+    createSantriImportGroup();
+
+    $upload = makeSantriImportUpload([
+        ['ABC123', 'NIM Huruf', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', 'nim-huruf@example.test'],
+        ['001237', 'NIM Digit', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', 'nim-digit@example.test'],
+    ]);
+
+    $this->actingAs($admin)->post(route('santris.import.preview'), ['file' => $upload])
+        ->assertOk()
+        ->assertViewHas('preview', function (array $data): bool {
+            $invalidRows = array_values(array_filter(
+                $data['rows'],
+                fn (array $row): bool => $row['category'] === 'invalid'
+            ));
+
+            return $data['valid'] === 1
+                && $data['invalid'] === 1
+                && count($invalidRows) === 1
+                && str_contains(implode(' ', $invalidRows[0]['reasons']), 'NIM mengandung karakter selain angka.');
+        });
+
+    expect(Santri::query()->count())->toBe(0)
+        ->and(User::query()->where('role', UserRole::Santri->value)->count())->toBe(0);
 });
 
 test('admin can import hundreds of santri without creating groups or touching existing accounts', function () {
@@ -220,7 +253,7 @@ test('admin can import hundreds of santri without creating groups or touching ex
     $rows = [];
     for ($index = 1; $index <= 200; $index++) {
         $nim = str_pad((string) (100000 + $index), 8, '0', STR_PAD_LEFT);
-        $rows[] = [$nim, "Santri Uji {$index}", $index % 2 === 0 ? 'Perempuan' : 'Laki-laki', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', "santri{$index}@example.test"];
+        $rows[] = [$nim, "Santri Uji {$index}", 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', "santri{$index}@example.test"];
     }
 
     $preview = $this->actingAs($admin)->post(route('santris.import.preview'), ['file' => makeSantriImportUpload($rows)]);
@@ -233,7 +266,7 @@ test('admin can import hundreds of santri without creating groups or touching ex
         ->and(Kelompok::query()->count())->toBe(1);
 });
 
-test('workbook titles, sheet selection, header aliases and empty rows are parsed and gender can be completed before commit', function () {
+test('workbook titles, sheet selection, header aliases and empty rows are parsed without gender input', function () {
     config()->set('sik.auth.require_email_verification', false);
     Storage::fake('local');
     $admin = User::factory()->create(['role' => UserRole::Admin]);
@@ -254,18 +287,16 @@ test('workbook titles, sheet selection, header aliases and empty rows are parsed
             && $data['rows'][0]['row'] === 5
             && $data['rows'][0]['data']['periode_sik_id'] !== null
             && $data['rows'][0]['data']['periode_label'] === 'ganjil_2026'
-            && $data['rows'][0]['category'] === 'invalid'
-            && str_contains(implode(' ', $data['rows'][0]['reasons']), 'Jenis kelamin wajib');
+            && $data['rows'][0]['category'] === 'valid';
     });
     expect(Santri::query()->count())->toBe(0);
 
     $this->post(route('santris.import.commit'), [
         'import_token' => session('santri_import_token'),
-        'corrections' => [0 => ['jenis_kelamin' => 'Perempuan']],
     ])->assertRedirect(route('santris.index'));
 
     $santri = Santri::query()->where('nomor_induk', '001240')->firstOrFail();
-    expect($santri->jenis_kelamin)->toBe('Perempuan')
+    expect($santri->jenis_kelamin)->toBeNull()
         ->and($santri->program_studi)->toBe('Sistem Informasi')
         ->and(AnggotaPeriodeSik::query()->where('santri_id', $santri->id)->value('periode_sik_id'))->toBe($setup['period']->id);
 });
@@ -287,18 +318,26 @@ test('database duplicates, missing required fields and unknown groups never get 
     $oldPasswordHash = $oldUser->password;
 
     $upload = makeSantriImportUpload([
-        ['008887', 'Santri Valid', 'Laki-laki', '', 'Teknologi', 'ganjil_2026', 'Aktif', 'valid@example.test'],
-        ['009999', 'Nama Diubah', 'Perempuan', 'Prodi', 'Teknologi', 'ganjil_2026', 'Aktif', 'different@example.test'],
-        ['', '', 'Laki-laki', '', 'Teknologi', 'ganjil_2026', 'Aktif', 'missing@example.test'],
-        ['008888', 'Kelompok Tidak Ada', 'Perempuan', '', 'Kelompok Baru', 'ganjil_2026', 'Aktif', 'new@example.test'],
+        ['008887', 'Santri Valid', '', 'Teknologi', 'ganjil_2026', 'Aktif', 'valid@example.test'],
+        ['009999', 'Nama Diubah', 'Prodi', 'Teknologi', 'ganjil_2026', 'Aktif', 'different@example.test'],
+        ['', '', '', 'Teknologi', 'ganjil_2026', 'Aktif', 'missing@example.test'],
+        ['008888', 'Kelompok Tidak Ada', '', 'Kelompok Baru', 'ganjil_2026', 'Aktif', 'new@example.test'],
     ]);
 
     $this->actingAs($admin)->post(route('santris.import.preview'), ['file' => $upload])
         ->assertOk()
-        ->assertViewHas('preview', fn (array $data): bool => $data['valid'] === 1
-            && $data['duplicate'] === 1
-            && $data['invalid'] === 2
-        );
+        ->assertSee('Perlu diperbaiki')
+        ->assertViewHas('preview', function (array $data): bool {
+            $badGroup = collect($data['rows'])->first(
+                fn (array $row): bool => $row['data']['nomor_induk'] === '008888'
+            );
+
+            return $data['valid'] === 1
+                && $data['duplicate'] === 1
+                && $data['invalid'] === 2
+                && $badGroup['category'] === 'invalid'
+                && str_contains(implode(' ', $badGroup['reasons']), 'Kelompok tidak ditemukan.');
+        });
 
     expect(Santri::query()->count())->toBe(1)
         ->and(User::findOrFail($oldUser->id)->name)->toBe('Nama Lama')
@@ -315,6 +354,7 @@ test('database duplicates, missing required fields and unknown groups never get 
         ->and($oldUser->name)->toBe('Nama Lama')
         ->and($oldUser->email)->toBe('old-santri@example.test')
         ->and($oldUser->password)->toBe($oldPasswordHash)
+        ->and(Santri::query()->where('nomor_induk', '009999')->value('jenis_kelamin'))->toBe('Laki-laki')
         ->and(Kelompok::query()->count())->toBe(1);
 });
 
@@ -325,6 +365,7 @@ test('import page removes default period and instructor choices and preview is e
         ->assertOk()
         ->assertDontSee('Periode bawaan jika kolom periode kosong')
         ->assertDontSee('Instruktur untuk kelompok baru')
+        ->assertSee('Jenis kelamin tidak perlu diisi pada import')
         ->assertSee('Belum ada data yang disimpan');
 });
 
@@ -339,7 +380,7 @@ test('invalid workbook layout is rejected before import', function () {
 
 test('import rejects non-XLSX files, files over 10 MB, and workbooks over the row limit', function () {
     $admin = User::factory()->create(['role' => UserRole::Admin]);
-    $validFile = makeSantriImportUpload([['001234', 'Alya Rahma', 'Perempuan', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', 'alya@example.test']]);
+    $validFile = makeSantriImportUpload([['001234', 'Alya Rahma', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', 'alya@example.test']]);
     $csvNamedUpload = new UploadedFile(
         $validFile->getPathname(),
         'data-santri.csv',
@@ -361,7 +402,7 @@ test('import rejects non-XLSX files, files over 10 MB, and workbooks over the ro
 
     $tooManyRows = [];
     for ($index = 1; $index <= 1501; $index++) {
-        $tooManyRows[] = [str_pad((string) $index, 8, '0', STR_PAD_LEFT), 'Nama Uji '.$index, 'Laki-laki', '', 'Teknologi', 'ganjil_2026', 'Aktif', 'uji'.$index.'@example.test'];
+        $tooManyRows[] = [str_pad((string) $index, 8, '0', STR_PAD_LEFT), 'Nama Uji '.$index, '', 'Teknologi', 'ganjil_2026', 'Aktif', 'uji'.$index.'@example.test'];
     }
 
     $this->post(route('santris.import.preview'), ['file' => makeSantriImportUpload($tooManyRows)])
@@ -459,13 +500,16 @@ test('template XLSX memuat semua komponen Office Open XML yang wajib dan valid',
         expect($headers)->toBe([
             'Nomor Induk/NIM',
             'Nama Santri',
-            'Jenis Kelamin',
             'Program Studi',
             'Kelompok',
             'Periode',
             'Status Santri',
             'Email (opsional)',
         ]);
+
+        $sheetXml = (string) $zip->getFromName('xl/worksheets/sheet1.xml');
+        expect(str_contains($sheetXml, 'Jenis Kelamin'))->toBeFalse()
+            ->and(str_contains($sheetXml, 'A1:G1'))->toBeTrue();
 
         $zip->close();
     } finally {
@@ -489,12 +533,11 @@ test('template XLSX dapat dibaca ulang oleh parser import Santri', function () {
         $dataRow = '<row r="2">'
             .'<c r="A2" t="inlineStr"><is><t>001234</t></is></c>'
             .'<c r="B2" t="inlineStr"><is><t>Alya Rahma</t></is></c>'
-            .'<c r="C2" t="inlineStr"><is><t>Perempuan</t></is></c>'
-            .'<c r="D2" t="inlineStr"><is><t>Sistem Informasi</t></is></c>'
-            .'<c r="E2" t="inlineStr"><is><t>Teknologi</t></is></c>'
-            .'<c r="F2" t="inlineStr"><is><t>ganjil_2026</t></is></c>'
-            .'<c r="G2" t="inlineStr"><is><t>Aktif</t></is></c>'
-            .'<c r="H2" t="inlineStr"><is><t>alya@example.test</t></is></c>'
+            .'<c r="C2" t="inlineStr"><is><t>Sistem Informasi</t></is></c>'
+            .'<c r="D2" t="inlineStr"><is><t>Teknologi</t></is></c>'
+            .'<c r="E2" t="inlineStr"><is><t>ganjil_2026</t></is></c>'
+            .'<c r="F2" t="inlineStr"><is><t>Aktif</t></is></c>'
+            .'<c r="G2" t="inlineStr"><is><t>alya@example.test</t></is></c>'
             .'</row>';
 
         $filledSheet = str_replace('</sheetData>', $dataRow.'</sheetData>', $originalSheet);
@@ -520,7 +563,7 @@ test('template XLSX dapat dibaca ulang oleh parser import Santri', function () {
             ->and($rows[0]['sheet'])->toBe('Data Santri')
             ->and($rows[0]['nomor_induk'])->toBe('001234')
             ->and($rows[0]['nama'])->toBe('Alya Rahma')
-            ->and($rows[0]['jenis_kelamin'])->toBe('Perempuan')
+            ->and(array_key_exists('jenis_kelamin', $rows[0]))->toBeFalse()
             ->and($rows[0]['program_studi'])->toBe('Sistem Informasi')
             ->and($rows[0]['kelompok'])->toBe('Teknologi')
             ->and($rows[0]['periode'])->toBe('ganjil_2026')
@@ -563,4 +606,406 @@ test('proses download template tidak menghasilkan output sebelum binary XLSX', f
         @unlink($scriptPath);
         @unlink($outputPath);
     }
+});
+
+test('admin can correct a mistyped group name and recheck before importing', function () {
+    config()->set('sik.auth.require_email_verification', false);
+    Storage::fake('local');
+    $admin = User::factory()->create(['role' => UserRole::Admin]);
+    $setup = createSantriImportGroup('Teknologi');
+
+    $upload = makeSantriImportUpload([
+        ['001300', 'Rani Uji', 'Sistem Informasi', 'Teknolog', 'ganjil_2026', 'Aktif', 'rani@example.test'],
+    ]);
+
+    $this->actingAs($admin)->post(route('santris.import.preview'), ['file' => $upload])
+        ->assertOk()
+        ->assertSee('Perlu diperbaiki')
+        ->assertViewHas('preview', fn (array $data): bool => $data['valid'] === 0 && $data['invalid'] === 1);
+
+    $token = session('santri_import_token');
+    expect($token)->toBeString();
+
+    $this->post(route('santris.import.commit'), ['import_token' => $token])
+        ->assertOk()
+        ->assertSee('Perlu diperbaiki');
+    expect(Santri::query()->count())->toBe(0);
+
+    $this->post(route('santris.import.recheck'), [
+        'import_token' => $token,
+        'corrections' => [0 => ['kelompok' => (string) $setup['group']->id]],
+    ])->assertOk()->assertViewHas('preview', fn (array $data): bool => $data['valid'] === 1 && $data['invalid'] === 0);
+
+    $this->post(route('santris.import.commit'), ['import_token' => $token])
+        ->assertRedirect(route('santris.index'))
+        ->assertSessionHas('import_result', fn (array $result): bool => $result['created'] === 1);
+
+    $santri = Santri::query()->where('nomor_induk', '001300')->firstOrFail();
+    $membership = AnggotaPeriodeSik::query()->where('santri_id', $santri->id)->firstOrFail();
+    expect($membership->kelompok_id)->toBe($setup['group']->id)
+        ->and($setup['group']->fresh()->nama_kelompok)->toBe('Teknologi')
+        ->and(Kelompok::query()->count())->toBe(1)
+        ->and($santri->jenis_kelamin)->toBeNull()
+        ->and($santri->nomor_induk)->toBe('001300');
+});
+
+test('inactive group is flagged for correction and is never activated or replaced automatically', function () {
+    config()->set('sik.auth.require_email_verification', false);
+    Storage::fake('local');
+    $admin = User::factory()->create(['role' => UserRole::Admin]);
+    $setup = createSantriImportGroup('Teknologi');
+    $inactiveGroup = Kelompok::query()->create([
+        'periode_sik_id' => $setup['period']->id,
+        'instruktur_id' => $setup['instructor']->id,
+        'nama_kelompok' => 'Nonaktif',
+        'status' => 'Tidak Aktif',
+    ]);
+
+    $upload = makeSantriImportUpload([
+        ['001301', 'Dian Uji', 'Sistem Informasi', 'Nonaktif', 'ganjil_2026', 'Aktif', 'dian@example.test'],
+    ]);
+
+    $this->actingAs($admin)->post(route('santris.import.preview'), ['file' => $upload])
+        ->assertOk()
+        ->assertSee('Perlu diperbaiki')
+        ->assertViewHas('preview', function (array $data): bool {
+            return $data['valid'] === 0
+                && str_contains(implode(' ', $data['rows'][0]['reasons']), 'Kelompok tidak aktif.');
+        });
+
+    $token = session('santri_import_token');
+
+    $this->post(route('santris.import.commit'), ['import_token' => $token])->assertOk();
+    expect(Santri::query()->count())->toBe(0)
+        ->and($inactiveGroup->fresh()->status)->toBe('Tidak Aktif');
+
+    $this->post(route('santris.import.recheck'), [
+        'import_token' => $token,
+        'corrections' => [0 => ['kelompok' => (string) $setup['group']->id]],
+    ])->assertOk()->assertViewHas('preview', fn (array $data): bool => $data['valid'] === 1);
+
+    $this->post(route('santris.import.commit'), ['import_token' => $token])
+        ->assertRedirect(route('santris.index'));
+
+    expect(AnggotaPeriodeSik::query()->firstOrFail()->kelompok_id)->toBe($setup['group']->id)
+        ->and(Kelompok::query()->count())->toBe(2)
+        ->and($inactiveGroup->fresh()->status)->toBe('Tidak Aktif');
+});
+
+test('preview has no gender field and gender corrections are rejected', function () {
+    config()->set('sik.auth.require_email_verification', false);
+    Storage::fake('local');
+    $admin = User::factory()->create(['role' => UserRole::Admin]);
+    $setup = createSantriImportGroup();
+
+    $upload = makeSantriImportUpload([
+        ['001302', 'Farhan Uji', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', 'farhan@example.test'],
+    ]);
+
+    $this->actingAs($admin)->post(route('santris.import.preview'), ['file' => $upload])
+        ->assertOk()
+        ->assertDontSee('Jenis Kelamin *')
+        ->assertSee('name="corrections[0][kelompok]"', false)
+        ->assertSee('<select class="form-select form-select-sm" name="corrections[0][kelompok]"', false)
+        ->assertSee('value="'.$setup['group']->id.'" selected', false);
+
+    $this->post(route('santris.import.recheck'), [
+        'import_token' => session('santri_import_token'),
+        'corrections' => [0 => ['jenis_kelamin' => 'Perempuan']],
+    ])->assertSessionHasErrors(['corrections.0']);
+});
+
+test('dropdown corrections only contain active groups from the row period', function () {
+    config()->set('sik.auth.require_email_verification', false);
+    Storage::fake('local');
+    $admin = User::factory()->create(['role' => UserRole::Admin]);
+    $setup = createSantriImportGroup('Teknologi');
+    $secondActive = Kelompok::query()->create([
+        'periode_sik_id' => $setup['period']->id,
+        'instruktur_id' => $setup['instructor']->id,
+        'nama_kelompok' => 'Teknologi Dua',
+        'status' => 'Aktif',
+    ]);
+    $otherPeriod = PeriodeSik::query()->create([
+        'nama_periode' => 'genap_2025',
+        'tahun' => 2025,
+        'tanggal_mulai' => '2025-01-01',
+        'tanggal_selesai' => '2025-06-30',
+        'status' => 'Aktif',
+    ]);
+    Kelompok::query()->create([
+        'periode_sik_id' => $otherPeriod->id,
+        'instruktur_id' => $setup['instructor']->id,
+        'nama_kelompok' => 'Kelompok Periode Lain',
+        'status' => 'Aktif',
+    ]);
+    Kelompok::query()->create([
+        'periode_sik_id' => $setup['period']->id,
+        'instruktur_id' => $setup['instructor']->id,
+        'nama_kelompok' => 'Kelompok Tidak Aktif',
+        'status' => 'Tidak Aktif',
+    ]);
+
+    $this->actingAs($admin)->post(route('santris.import.preview'), ['file' => makeSantriImportUpload([
+        ['001310', 'Sari Uji', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', 'sari@example.test'],
+    ])])
+        ->assertOk()
+        ->assertViewHas('preview', function (array $data) use ($setup, $secondActive): bool {
+            $ids = array_column($data['rows'][0]['data']['kelompok_options'], 'id');
+
+            return $ids === [$setup['group']->id, $secondActive->id];
+        })
+        ->assertDontSee('Kelompok Periode Lain')
+        ->assertDontSee('Kelompok Tidak Aktif');
+});
+
+test('each excel row only receives groups from its own active period', function () {
+    config()->set('sik.auth.require_email_verification', false);
+    Storage::fake('local');
+    $admin = User::factory()->create(['role' => UserRole::Admin]);
+    $first = createSantriImportGroup('Teknologi A');
+    $secondPeriod = PeriodeSik::query()->create([
+        'nama_periode' => 'genap_2025',
+        'tahun' => 2025,
+        'tanggal_mulai' => '2025-01-01',
+        'tanggal_selesai' => '2025-06-30',
+        'status' => 'Aktif',
+    ]);
+    $secondGroup = Kelompok::query()->create([
+        'periode_sik_id' => $secondPeriod->id,
+        'instruktur_id' => $first['instructor']->id,
+        'nama_kelompok' => 'Teknologi B',
+        'status' => 'Aktif',
+    ]);
+
+    $this->actingAs($admin)->post(route('santris.import.preview'), ['file' => makeSantriImportUpload([
+        ['001311', 'Baris A', 'Sistem Informasi', 'Teknologi A', 'ganjil_2026', 'Aktif', 'baris-a@example.test'],
+        ['001312', 'Baris B', 'Sistem Informasi', 'Teknologi B', 'genap_2025', 'Aktif', 'baris-b@example.test'],
+    ])])
+        ->assertOk()
+        ->assertViewHas('preview', function (array $data) use ($first, $secondGroup): bool {
+            $firstIds = array_column($data['rows'][0]['data']['kelompok_options'], 'id');
+            $secondIds = array_column($data['rows'][1]['data']['kelompok_options'], 'id');
+
+            return $firstIds === [$first['group']->id]
+                && $secondIds === [$secondGroup->id];
+        });
+});
+
+test('admin correction selects another active group in the same period and is saved', function () {
+    config()->set('sik.auth.require_email_verification', false);
+    Storage::fake('local');
+    $admin = User::factory()->create(['role' => UserRole::Admin]);
+    $setup = createSantriImportGroup('Teknologi Satu');
+    $replacement = Kelompok::query()->create([
+        'periode_sik_id' => $setup['period']->id,
+        'instruktur_id' => $setup['instructor']->id,
+        'nama_kelompok' => 'Teknologi Dua',
+        'status' => 'Aktif',
+    ]);
+
+    $this->actingAs($admin)->post(route('santris.import.preview'), ['file' => makeSantriImportUpload([
+        ['001313', 'Bima Koreksi', 'Sistem Informasi', 'Teknologi Satu', 'ganjil_2026', 'Aktif', 'bima-koreksi@example.test'],
+    ])])->assertOk();
+
+    $token = session('santri_import_token');
+
+    $this->post(route('santris.import.recheck'), [
+        'import_token' => $token,
+        'corrections' => [0 => ['kelompok' => (string) $replacement->id]],
+    ])->assertOk()->assertViewHas('preview', function (array $data) use ($replacement): bool {
+        return $data['valid'] === 1
+            && $data['rows'][0]['data']['selected_kelompok_id'] === (string) $replacement->id
+            && $data['rows'][0]['data']['existing_group_id'] === $replacement->id;
+    });
+
+    $this->post(route('santris.import.commit'), ['import_token' => $token])
+        ->assertRedirect(route('santris.index'));
+
+    $santri = Santri::query()->where('nomor_induk', '001313')->firstOrFail();
+    expect(AnggotaPeriodeSik::query()->where('santri_id', $santri->id)->value('kelompok_id'))->toBe($replacement->id)
+        ->and(Kelompok::query()->count())->toBe(2);
+});
+
+test('recheck updates row status and summary counts for valid and still invalid groups', function () {
+    config()->set('sik.auth.require_email_verification', false);
+    Storage::fake('local');
+    $admin = User::factory()->create(['role' => UserRole::Admin]);
+    $setup = createSantriImportGroup('Teknologi');
+
+    $this->actingAs($admin)->post(route('santris.import.preview'), ['file' => makeSantriImportUpload([
+        ['001314', 'Uji Periksa Ulang', 'Sistem Informasi', 'Kelompok Salah', 'ganjil_2026', 'Aktif', 'periksa-ulang@example.test'],
+    ])])->assertOk();
+
+    $token = session('santri_import_token');
+
+    $this->post(route('santris.import.recheck'), [
+        'import_token' => $token,
+        'corrections' => [0 => ['kelompok' => (string) $setup['group']->id]],
+    ])->assertOk()->assertViewHas('preview', fn (array $data): bool => $data['valid'] === 1
+        && $data['invalid'] === 0
+        && $data['duplicate'] === 0
+        && $data['total'] === 1
+        && $data['rows'][0]['category'] === 'valid');
+
+    $this->post(route('santris.import.recheck'), [
+        'import_token' => $token,
+        'corrections' => [0 => ['kelompok' => '999999']],
+    ])->assertOk()->assertViewHas('preview', function (array $data): bool {
+        return $data['valid'] === 0
+            && $data['invalid'] === 1
+            && $data['total'] === 1
+            && $data['rows'][0]['category'] === 'invalid'
+            && str_contains(implode(' ', $data['rows'][0]['reasons']), 'Kelompok yang dipilih tidak tersedia pada periode ini.')
+            && $data['rows'][0]['data']['selected_kelompok_id'] === '999999';
+    });
+});
+
+test('missing active group for an excel period is rejected and cannot be imported', function () {
+    config()->set('sik.auth.require_email_verification', false);
+    Storage::fake('local');
+    $admin = User::factory()->create(['role' => UserRole::Admin]);
+    $period = PeriodeSik::query()->create([
+        'nama_periode' => 'ganjil_2024',
+        'tahun' => 2024,
+        'tanggal_mulai' => '2024-08-01',
+        'tanggal_selesai' => '2024-12-31',
+        'status' => 'Aktif',
+    ]);
+
+    $this->actingAs($admin)->post(route('santris.import.preview'), ['file' => makeSantriImportUpload([
+        ['001315', 'Tanpa Kelompok', 'Sistem Informasi', 'Belum Ada', 'ganjil_2024', 'Aktif', 'tanpa-kelompok@example.test'],
+    ])])
+        ->assertOk()
+        ->assertSee('Kelompok belum tersedia untuk periode ini.')
+        ->assertViewHas('preview', function (array $data) use ($period): bool {
+            return $data['valid'] === 0
+                && $data['rows'][0]['data']['kelompok_options'] === []
+                && $data['rows'][0]['data']['periode_sik_id'] === $period->id
+                && str_contains(implode(' ', $data['rows'][0]['reasons']), 'Kelompok tidak ditemukan.');
+        });
+
+    $this->post(route('santris.import.commit'), ['import_token' => session('santri_import_token')])
+        ->assertOk();
+    expect(Santri::query()->count())->toBe(0);
+});
+
+test('valid rows are still imported untouched while only the selected row is corrected', function () {
+    config()->set('sik.auth.require_email_verification', false);
+    Storage::fake('local');
+    $admin = User::factory()->create(['role' => UserRole::Admin]);
+    $setup = createSantriImportGroup('Teknologi Satu');
+    $replacement = Kelompok::query()->create([
+        'periode_sik_id' => $setup['period']->id,
+        'instruktur_id' => $setup['instructor']->id,
+        'nama_kelompok' => 'Teknologi Dua',
+        'status' => 'Aktif',
+    ]);
+
+    $this->actingAs($admin)->post(route('santris.import.preview'), ['file' => makeSantriImportUpload([
+        ['001316', 'Baris Valid', 'Sistem Informasi', 'Teknologi Satu', 'ganjil_2026', 'Aktif', 'valid-utuh@example.test'],
+        ['001317', 'Baris Koreksi', 'Sistem Informasi', 'Teknologi Satu', 'ganjil_2026', 'Aktif', 'koreksi-utuh@example.test'],
+    ])])->assertOk();
+
+    $token = session('santri_import_token');
+
+    $this->post(route('santris.import.recheck'), [
+        'import_token' => $token,
+        'corrections' => [1 => ['kelompok' => (string) $replacement->id]],
+    ])->assertOk()->assertViewHas('preview', fn (array $data): bool => $data['valid'] === 2 && $data['total'] === 2);
+
+    $this->post(route('santris.import.commit'), ['import_token' => $token])
+        ->assertRedirect(route('santris.index'))
+        ->assertSessionHas('import_result', fn (array $result): bool => $result['created'] === 2);
+
+    $first = Santri::query()->where('nomor_induk', '001316')->firstOrFail();
+    $second = Santri::query()->where('nomor_induk', '001317')->firstOrFail();
+    expect(AnggotaPeriodeSik::query()->where('santri_id', $first->id)->value('kelompok_id'))->toBe($setup['group']->id)
+        ->and(AnggotaPeriodeSik::query()->where('santri_id', $second->id)->value('kelompok_id'))->toBe($replacement->id)
+        ->and($first->nama)->toBe('Baris Valid')
+        ->and($second->nama)->toBe('Baris Koreksi');
+});
+
+test('summary counts and import button stay consistent with validated rows', function () {
+    config()->set('sik.auth.require_email_verification', false);
+    Storage::fake('local');
+    $admin = User::factory()->create(['role' => UserRole::Admin]);
+    createSantriImportGroup('Teknologi');
+
+    $response = $this->actingAs($admin)->post(route('santris.import.preview'), ['file' => makeSantriImportUpload([
+        ['001318', 'Valid Satu', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', 'valid-satu@example.test'],
+        ['ABC999', 'NIM Salah', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', 'nim-salah@example.test'],
+        ['001318', 'Duplikat', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', 'duplikat@example.test'],
+    ])]);
+
+    $response->assertOk()
+        ->assertSee('Import 1 Santri Valid', false)
+        ->assertViewHas('preview', function (array $data): bool {
+            return $data['total'] === $data['valid'] + $data['invalid'] + $data['duplicate']
+                && $data['total'] === 3
+                && $data['valid'] === 1
+                && $data['invalid'] === 1
+                && $data['duplicate'] === 1;
+        });
+});
+
+test('error messages are displayed in full without being truncated', function () {
+    config()->set('sik.auth.require_email_verification', false);
+    Storage::fake('local');
+    $admin = User::factory()->create(['role' => UserRole::Admin]);
+    createSantriImportGroup('Teknologi');
+
+    $this->actingAs($admin)->post(route('santris.import.preview'), ['file' => makeSantriImportUpload([
+        ['ABC123', '', 'Sistem Informasi', 'Belum Ada', 'ganjil_2026', 'Aktif', ''],
+    ])])
+        ->assertOk()
+        ->assertSee('Kelompok tidak ditemukan. Belum Ada belum tersedia pada periode ganjil_2026; pilih kelompok yang tersedia lalu tekan Periksa ulang.', false)
+        ->assertSee('NIM mengandung karakter selain angka.', false)
+        ->assertSee('Data wajib belum lengkap. Yang belum diisi: Nama santri.', false)
+        ->assertSee('.santri-import-table .reason-list { white-space: normal;', false)
+        ->assertSee('santri-import-scroll', false);
+});
+
+test('duplicate nim and group from another period show explicit rejection reasons', function () {
+    config()->set('sik.auth.require_email_verification', false);
+    Storage::fake('local');
+    $admin = User::factory()->create(['role' => UserRole::Admin]);
+    $setup = createSantriImportGroup('Teknologi');
+    $otherPeriod = PeriodeSik::query()->create([
+        'nama_periode' => 'genap_2025',
+        'tahun' => 2025,
+        'tanggal_mulai' => '2025-01-01',
+        'tanggal_selesai' => '2025-06-30',
+        'status' => 'Aktif',
+    ]);
+    Kelompok::query()->create([
+        'periode_sik_id' => $otherPeriod->id,
+        'instruktur_id' => $setup['instructor']->id,
+        'nama_kelompok' => 'Eksklusif',
+        'status' => 'Aktif',
+    ]);
+    $oldUser = User::factory()->create(['role' => UserRole::Santri, 'email' => 'nim-lama@example.test']);
+    Santri::query()->create([
+        'user_id' => $oldUser->id,
+        'nomor_induk' => '009998',
+        'nama' => 'NIM Lama',
+        'status' => 'Aktif',
+    ]);
+
+    $this->actingAs($admin)->post(route('santris.import.preview'), ['file' => makeSantriImportUpload([
+        ['009998', 'NIM Duplikat', 'Sistem Informasi', 'Teknologi', 'ganjil_2026', 'Aktif', 'nim-baru@example.test'],
+        ['001320', 'Salah Periode', 'Sistem Informasi', 'Eksklusif', 'ganjil_2026', 'Aktif', 'salah-periode@example.test'],
+    ])])
+        ->assertOk()
+        ->assertSee('NIM sudah terdaftar.', false)
+        ->assertSee('Kelompok tidak sesuai periode.', false)
+        ->assertViewHas('preview', function (array $data): bool {
+            $duplicate = $data['rows'][0];
+            $wrongPeriod = $data['rows'][1];
+
+            return $duplicate['category'] === 'duplicate'
+                && str_contains(implode(' ', $duplicate['reasons']), 'NIM sudah terdaftar.')
+                && $wrongPeriod['category'] === 'invalid'
+                && str_contains(implode(' ', $wrongPeriod['reasons']), 'Kelompok tidak sesuai periode.');
+        });
 });

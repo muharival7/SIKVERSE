@@ -7,7 +7,6 @@ use App\Models\AbsensiSik;
 use App\Models\AnggotaPeriodeSik;
 use App\Models\InfrastrukturSik;
 use App\Models\Kelompok;
-use App\Models\KelulusanSik;
 use App\Models\PeriodeSik;
 use App\Models\RekapKehadiranSik;
 use App\Models\Santri;
@@ -86,11 +85,11 @@ class DashboardController extends Controller
         $attendanceRecords = $keanggotaan instanceof AnggotaPeriodeSik
             ? $keanggotaan->absensi()->with('pertemuan.kegiatan')->get()
             : collect();
-        $recapRecords = $keanggotaan instanceof AnggotaPeriodeSik
-            ? $keanggotaan->rekapKehadiran()->with('kegiatan')->latest()->get()
+        $recapRows = $keanggotaan instanceof AnggotaPeriodeSik
+            ? $this->attendanceRecapService->displayRows(collect([$keanggotaan]))
             : collect();
 
-        $this->attendanceRecapService->prepareDisplay($recapRecords);
+        $this->attendanceRecapService->prepareDisplay($recapRows);
         $terlaksanaRecords = $attendanceRecords->filter(
             fn (AbsensiSik $attendance): bool => $attendance->pertemuan?->status === 'Terlaksana'
         );
@@ -103,7 +102,12 @@ class DashboardController extends Controller
             'Tidak Lengkap' => $terlaksanaRecords->where('status', 'Tidak Lengkap')->count(),
         ];
 
-        $activityRecaps = $recapRecords->map(function (RekapKehadiranSik $recap): array {
+        $activityRecaps = $recapRows->map(function (RekapKehadiranSik $recap): array {
+            $metric = $recap->getAttribute('attendance_metric');
+            $persentase = is_array($metric) && $metric['persentase'] !== null
+                ? (float) $metric['persentase']
+                : null;
+
             return [
                 'nama_kegiatan' => $recap->kegiatan?->nama_kegiatan ?? 'Kegiatan SIK',
                 'total_pertemuan' => (int) $recap->total_pertemuan,
@@ -111,14 +115,14 @@ class DashboardController extends Controller
                 'jumlah_izin' => (int) $recap->jumlah_izin,
                 'jumlah_sakit' => (int) $recap->jumlah_sakit,
                 'jumlah_alpha' => (int) $recap->jumlah_alpha,
-                'persentase' => $recap->tersedia ? (float) $recap->persentase_kehadiran : null,
+                'persentase' => $persentase,
                 'persentase_display' => (string) $recap->persentase_display,
                 'status' => (string) $recap->status_kehadiran,
                 'memenuhi' => (bool) $recap->memenuhi,
             ];
         })->values();
 
-        $attendancePercentage = $this->attendanceRecapService->averagePercentage($recapRecords);
+        $attendancePercentage = $this->attendanceRecapService->averagePercentage($recapRows);
 
         $orderedAttendance = $terlaksanaRecords->sortBy(function (AbsensiSik $attendance): string {
             return $attendance->pertemuan?->tanggal?->format('Y-m-d')
@@ -129,6 +133,7 @@ class DashboardController extends Controller
         $recentAttendance = $orderedAttendance->reverse()->take(5)->values();
         $attendanceTrend = $this->attendanceTrend($orderedAttendance);
         $kelulusan = $keanggotaan instanceof AnggotaPeriodeSik ? $keanggotaan->kelulusan : null;
+        $graduationEvaluation = $this->attendanceRecapService->graduationEvaluation($kelulusan, $keanggotaan);
 
         return [
             'santri' => $santri,
@@ -136,12 +141,15 @@ class DashboardController extends Controller
             'activityRecaps' => $activityRecaps,
             'attendanceCounts' => $statusCounts,
             'attendancePercentage' => $attendancePercentage,
+            'attendancePercentageDisplay' => $this->percentageLabelOrDash($attendancePercentage),
             'attendanceRecordCount' => $terlaksanaRecords->count(),
             'recentAttendance' => $recentAttendance,
             'attendanceTrend' => $attendanceTrend,
             'minimumPercentage' => $this->attendanceRecapService->minimumPercentage(),
+            'minimumPercentageDisplay' => $this->percentageLabel($this->attendanceRecapService->minimumPercentage()),
             'noMeetingsStatus' => AttendanceRecapService::STATUS_NO_MEETINGS,
             'kelulusan' => $kelulusan,
+            'graduationEvaluation' => $graduationEvaluation,
             'sertifikat' => $kelulusan?->sertifikat,
         ];
     }
@@ -156,18 +164,15 @@ class DashboardController extends Controller
             ->orderByDesc('tahun')
             ->first();
 
-        $recapQuery = RekapKehadiranSik::query()
-            ->with(['anggotaPeriode.santri', 'anggotaPeriode.kelompok', 'kegiatan'])
-            ->latest();
+        $participantsQuery = AnggotaPeriodeSik::query()
+            ->with(['santri', 'kelompok', 'periode'])
+            ->where('status', 'Aktif');
 
         if ($activePeriod instanceof PeriodeSik) {
-            $recapQuery->whereHas(
-                'anggotaPeriode',
-                fn ($query) => $query->where('periode_sik_id', $activePeriod->id)
-            );
+            $participantsQuery->where('periode_sik_id', $activePeriod->id);
         }
 
-        $recaps = $recapQuery->get();
+        $recaps = $this->attendanceRecapService->displayRows($participantsQuery->orderBy('id')->get());
         $this->attendanceRecapService->prepareDisplay($recaps);
         $recapsTersedia = $recaps->filter(fn (RekapKehadiranSik $recap): bool => (bool) $recap->tersedia);
         $hadirTotal = (int) $recapsTersedia->sum(fn (RekapKehadiranSik $recap): int => (int) $recap->jumlah_hadir);
@@ -177,12 +182,6 @@ class DashboardController extends Controller
         $tidakLengkapTotal = (int) $recapsTersedia->sum(fn (RekapKehadiranSik $recap): int => (int) $recap->jumlah_tidak_lengkap);
         $totalPertemuan = (int) $recapsTersedia->sum(fn (RekapKehadiranSik $recap): int => (int) $recap->total_pertemuan);
         $tidakHadirTotal = $izinTotal + $sakitTotal + $alphaTotal + $tidakLengkapTotal;
-
-        $participantsQuery = AnggotaPeriodeSik::query()->where('status', 'Aktif');
-
-        if ($activePeriod instanceof PeriodeSik) {
-            $participantsQuery->where('periode_sik_id', $activePeriod->id);
-        }
 
         $trendStart = Carbon::now()->subMonths(5)->startOfMonth()->toDateString();
         $attendanceQuery = AbsensiSik::query()
@@ -214,26 +213,25 @@ class DashboardController extends Controller
             })
             ->values();
 
+        $attendancePercentage = $this->attendanceRecapService->averagePercentage($recapsTersedia);
+        $mahasiswaLulus = $this->attendanceRecapService->graduationEvaluations($activePeriod?->id)
+            ->filter(fn (array $row): bool => $row['evaluasi']['code'] === AttendanceRecapService::GRADUATION_PASSED)
+            ->count();
+
         return [
             'dashboardPeriod' => $activePeriod,
             'adminStats' => [
                 'totalSantri' => Santri::query()->count(),
                 'totalDosen' => InfrastrukturSik::query()->count(),
                 'pesertaAktif' => $participantsQuery->distinct('santri_id')->count('santri_id'),
-                'mahasiswaLulus' => KelulusanSik::query()
-                    ->where('status', 'Lulus')
-                    ->meetsAttendanceThreshold()
-                    ->whereHas('anggotaPeriode', function ($query) use ($activePeriod): void {
-                        if ($activePeriod instanceof PeriodeSik) {
-                            $query->where('periode_sik_id', $activePeriod->id);
-                        }
-                    })
-                    ->count(),
-                'rataKehadiran' => $this->attendanceRecapService->averagePercentage($recapsTersedia),
+                'mahasiswaLulus' => $mahasiswaLulus,
+                'rataKehadiran' => $attendancePercentage,
+                'rataKehadiranDisplay' => $this->percentageLabelOrDash($attendancePercentage),
                 'totalRekap' => $recaps->count(),
                 'memenuhiTarget' => $recaps->where('status_kehadiran', AttendanceRecapService::STATUS_MET)->count(),
                 'noMeetings' => $recapsTersedia->isEmpty(),
                 'noMeetingsStatus' => AttendanceRecapService::STATUS_NO_MEETINGS,
+                'minimumPercentageDisplay' => $this->percentageLabel($this->attendanceRecapService->minimumPercentage()),
             ],
             'adminRecentAttendance' => $orderedAttendance->reverse()->take(6)->values(),
             'adminRecentSantris' => Santri::query()
@@ -250,9 +248,8 @@ class DashboardController extends Controller
                 'tidakLengkap' => $tidakLengkapTotal,
                 'tidakHadir' => $tidakHadirTotal,
                 'totalPertemuan' => $totalPertemuan,
-                'persentase' => $totalPertemuan > 0
-                    ? round(($hadirTotal / $totalPertemuan) * 100, 1)
-                    : null,
+                'persentase' => $attendancePercentage,
+                'persentaseDisplay' => $this->percentageLabelOrDash($attendancePercentage),
             ],
         ];
     }
@@ -270,7 +267,11 @@ class DashboardController extends Controller
                     'totalKelompok' => 0,
                     'pesertaAktif' => 0,
                     'rataKehadiran' => null,
+                    'rataKehadiranDisplay' => '—',
                     'totalRekap' => 0,
+                    'noMeetings' => true,
+                    'noMeetingsStatus' => AttendanceRecapService::STATUS_NO_MEETINGS,
+                    'minimumPercentageDisplay' => $this->percentageLabel($this->attendanceRecapService->minimumPercentage()),
                 ],
                 'infrastrukturAttendanceTrend' => collect(),
                 'infrastrukturRecentAttendance' => collect(),
@@ -280,17 +281,13 @@ class DashboardController extends Controller
         $groupIds = Kelompok::query()
             ->where('instruktur_id', $infrastruktur->id)
             ->pluck('id');
-        $participantsQuery = AnggotaPeriodeSik::query()
+        $participants = AnggotaPeriodeSik::query()
+            ->with(['santri', 'kelompok', 'periode'])
             ->whereIn('kelompok_id', $groupIds)
-            ->where('status', 'Aktif');
-        $recaps = RekapKehadiranSik::query()
-            ->with(['anggotaPeriode.santri', 'anggotaPeriode.kelompok', 'kegiatan'])
-            ->whereHas(
-                'anggotaPeriode.kelompok',
-                fn ($query) => $query->where('instruktur_id', $infrastruktur->id)
-            )
-            ->latest()
+            ->where('status', 'Aktif')
+            ->orderBy('id')
             ->get();
+        $recaps = $this->attendanceRecapService->displayRows($participants);
         $this->attendanceRecapService->prepareDisplay($recaps);
         $recapsTersedia = $recaps->filter(fn (RekapKehadiranSik $recap): bool => (bool) $recap->tersedia);
 
@@ -321,12 +318,18 @@ class DashboardController extends Controller
             })
             ->values();
 
+        $rataKehadiran = $this->attendanceRecapService->averagePercentage($recapsTersedia);
+
         return [
             'infrastrukturStats' => [
                 'totalKelompok' => $groupIds->count(),
-                'pesertaAktif' => $participantsQuery->distinct('santri_id')->count('santri_id'),
-                'rataKehadiran' => $this->attendanceRecapService->averagePercentage($recapsTersedia),
+                'pesertaAktif' => $participants->unique('santri_id')->count(),
+                'rataKehadiran' => $rataKehadiran,
+                'rataKehadiranDisplay' => $this->percentageLabelOrDash($rataKehadiran),
                 'totalRekap' => $recaps->count(),
+                'noMeetings' => $recapsTersedia->isEmpty(),
+                'noMeetingsStatus' => AttendanceRecapService::STATUS_NO_MEETINGS,
+                'minimumPercentageDisplay' => $this->percentageLabel($this->attendanceRecapService->minimumPercentage()),
             ],
             'infrastrukturAttendanceTrend' => $this->attendanceTrend($orderedAttendance),
             'infrastrukturRecentAttendance' => $orderedAttendance->reverse()->take(5)->values(),
@@ -338,36 +341,21 @@ class DashboardController extends Controller
      */
     private function kaLabDashboardData(): array
     {
-        $annualGraduation = KelulusanSik::query()
-            ->join('anggota_periode_sik as anggota', 'anggota.id', '=', 'kelulusan_sik.anggota_periode_sik_id')
-            ->join('periode_sik as periode', 'periode.id', '=', 'anggota.periode_sik_id')
-            ->select('periode.tahun as tahun')
-            ->selectRaw('COUNT(*) as total_peserta')
-            ->selectRaw("SUM(CASE WHEN kelulusan_sik.status = 'Lulus' THEN 1 ELSE 0 END) as jumlah_lulus")
-            ->selectRaw("SUM(CASE WHEN kelulusan_sik.status = 'Tidak Lulus' THEN 1 ELSE 0 END) as jumlah_tidak_lulus")
-            ->groupBy('periode.tahun')
-            ->orderBy('periode.tahun')
-            ->get()
-            ->map(fn ($row): array => [
-                'tahun' => (int) $row->tahun,
-                'total' => (int) $row->total_peserta,
-                'lulus' => (int) $row->jumlah_lulus,
-                'tidak_lulus' => (int) $row->jumlah_tidak_lulus,
-            ])
-            ->values();
-
+        $annualGraduation = $this->attendanceRecapService->graduationAnnualSummary();
         $currentYear = (int) now()->year;
         $currentYearSummary = $annualGraduation->firstWhere('tahun', $currentYear) ?? [
             'tahun' => $currentYear,
             'total' => 0,
             'lulus' => 0,
             'tidak_lulus' => 0,
+            'belum_ditetapkan' => 0,
         ];
 
         return [
             'graduationCurrentYear' => $currentYear,
             'graduationCurrentSummary' => $currentYearSummary,
             'graduationChartData' => $annualGraduation->slice(-5)->values(),
+            'minimumPercentageDisplay' => $this->percentageLabel($this->attendanceRecapService->minimumPercentage()),
         ];
     }
 
@@ -399,5 +387,15 @@ class DashboardController extends Controller
             })
             ->slice(-6)
             ->values();
+    }
+
+    private function percentageLabel(float $percentage): string
+    {
+        return $this->attendanceRecapService->formatPercentage($percentage).'%';
+    }
+
+    private function percentageLabelOrDash(?float $percentage): string
+    {
+        return $percentage === null ? '—' : $this->percentageLabel($percentage);
     }
 }

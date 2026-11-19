@@ -18,7 +18,7 @@ test('new users can register', function () {
     $response = $this->post('/register', [
         'name' => 'Test User',
         'email' => 'test@example.com',
-        'nomor_induk' => 'TEST-REG-001',
+        'nomor_induk' => '900001',
         'program_studi' => 'Sistem Informasi',
         'jenis_kelamin' => 'Perempuan',
         'password' => 'password',
