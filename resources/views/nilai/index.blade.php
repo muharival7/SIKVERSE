@@ -5,7 +5,14 @@
     <div class="mb-4">
         <h1 class="h3 fw-bold">Input dan Pengelolaan Nilai</h1>
         <p class="text-muted mb-0">Nilai hanya dapat dikelola untuk santri di kelompok aktif yang menjadi tanggung jawab Anda.</p>
+        <p class="small text-muted mb-0">Ketik nama mata pelajaran. Sistem memakai data master yang sudah ada atau menambahkan mata pelajaran baru bila belum tersedia.</p>
     </div>
+
+    <datalist id="mapel-options">
+        @foreach ($mataPelajaran as $mapel)
+            <option value="{{ $mapel->nama_mapel }}"></option>
+        @endforeach
+    </datalist>
 
     @if (session('success'))
         <div class="alert alert-success">{{ session('success') }}</div>
@@ -38,11 +45,7 @@
                         <div class="row g-3 align-items-end">
                             <div class="col-12 col-md-4">
                                 <label class="form-label" for="mapel-{{ $catatan->id }}">Mata pelajaran</label>
-                                <select class="form-select" id="mapel-{{ $catatan->id }}" name="mata_pelajaran_id" required>
-                                    @foreach ($mataPelajaran as $mapel)
-                                        <option value="{{ $mapel->id }}" @selected((string) old('mata_pelajaran_id', $catatan->mata_pelajaran_id) === (string) $mapel->id)>{{ $mapel->nama_mapel }}</option>
-                                    @endforeach
-                                </select>
+                                <input class="form-control" id="mapel-{{ $catatan->id }}" name="nama_mapel" list="mapel-options" value="{{ old('nama_mapel', $catatan->mataPelajaran?->nama_mapel) }}" placeholder="Masukkan nama mata pelajaran" maxlength="255" required>
                             </div>
                             <div class="col-6 col-md-2">
                                 <label class="form-label" for="semester-{{ $catatan->id }}">Semester</label>
@@ -69,47 +72,38 @@
                     <p class="text-muted">Belum ada nilai yang dicatat oleh Anda.</p>
                 @endforelse
 
-                @if ($mataPelajaran->isNotEmpty())
-                    <details class="mt-3">
-                        <summary class="btn btn-primary btn-sm">Tambah nilai</summary>
-                        <form method="POST" action="{{ route('nilai.store') }}" class="border rounded p-3 mt-3">
-                            @csrf
-                            <input type="hidden" name="santri_id" value="{{ $santri->id }}">
-                            <div class="row g-3 align-items-end">
-                                <div class="col-12 col-md-4">
-                                    <label class="form-label" for="mapel-baru-{{ $santri->id }}">Mata pelajaran</label>
-                                    <select class="form-select" id="mapel-baru-{{ $santri->id }}" name="mata_pelajaran_id" required>
-                                        <option value="">Pilih mata pelajaran</option>
-                                        @foreach ($mataPelajaran as $mapel)
-                                            <option value="{{ $mapel->id }}" @selected((string) old('mata_pelajaran_id') === (string) $mapel->id)>{{ $mapel->nama_mapel }}</option>
-                                        @endforeach
-                                    </select>
-                                </div>
-                                <div class="col-6 col-md-2">
-                                    <label class="form-label" for="semester-baru-{{ $santri->id }}">Semester</label>
-                                    <input class="form-control" id="semester-baru-{{ $santri->id }}" name="semester" value="{{ old('semester') }}" maxlength="50" required>
-                                </div>
-                                <div class="col-6 col-md-2">
-                                    <label class="form-label" for="tahun-baru-{{ $santri->id }}">Tahun ajaran</label>
-                                    <input class="form-control" id="tahun-baru-{{ $santri->id }}" name="tahun_ajaran" value="{{ old('tahun_ajaran', '2026/2027') }}" maxlength="20" placeholder="2026/2027" required>
-                                </div>
-                                <div class="col-6 col-md-2">
-                                    <label class="form-label" for="nilai-baru-{{ $santri->id }}">Nilai (0–100)</label>
-                                    <input class="form-control" id="nilai-baru-{{ $santri->id }}" type="number" name="nilai" min="0" max="100" step="0.01" value="{{ old('nilai') }}" required>
-                                </div>
-                                <div class="col-6 col-md-2">
-                                    <button class="btn btn-primary w-100" type="submit">Simpan</button>
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label" for="keterangan-baru-{{ $santri->id }}">Keterangan</label>
-                                    <textarea class="form-control" id="keterangan-baru-{{ $santri->id }}" name="keterangan" rows="2" maxlength="1000">{{ old('keterangan') }}</textarea>
-                                </div>
+                <details class="mt-3">
+                    <summary class="btn btn-primary btn-sm">Tambah nilai</summary>
+                    <form method="POST" action="{{ route('nilai.store') }}" class="border rounded p-3 mt-3">
+                        @csrf
+                        <input type="hidden" name="santri_id" value="{{ $santri->id }}">
+                        <div class="row g-3 align-items-end">
+                            <div class="col-12 col-md-4">
+                                <label class="form-label" for="mapel-baru-{{ $santri->id }}">Mata pelajaran</label>
+                                <input class="form-control" id="mapel-baru-{{ $santri->id }}" name="nama_mapel" list="mapel-options" value="{{ old('nama_mapel') }}" placeholder="Masukkan nama mata pelajaran" maxlength="255" required>
                             </div>
-                        </form>
-                    </details>
-                @else
-                    <div class="alert alert-warning mb-0">Admin belum menambahkan mata pelajaran aktif.</div>
-                @endif
+                            <div class="col-6 col-md-2">
+                                <label class="form-label" for="semester-baru-{{ $santri->id }}">Semester</label>
+                                <input class="form-control" id="semester-baru-{{ $santri->id }}" name="semester" value="{{ old('semester') }}" maxlength="50" required>
+                            </div>
+                            <div class="col-6 col-md-2">
+                                <label class="form-label" for="tahun-baru-{{ $santri->id }}">Tahun ajaran</label>
+                                <input class="form-control" id="tahun-baru-{{ $santri->id }}" name="tahun_ajaran" value="{{ old('tahun_ajaran', '2026/2027') }}" maxlength="20" placeholder="2026/2027" required>
+                            </div>
+                            <div class="col-6 col-md-2">
+                                <label class="form-label" for="nilai-baru-{{ $santri->id }}">Nilai (0–100)</label>
+                                <input class="form-control" id="nilai-baru-{{ $santri->id }}" type="number" name="nilai" min="0" max="100" step="0.01" value="{{ old('nilai') }}" required>
+                            </div>
+                            <div class="col-6 col-md-2">
+                                <button class="btn btn-primary w-100" type="submit">Simpan</button>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="keterangan-baru-{{ $santri->id }}">Keterangan</label>
+                                <textarea class="form-control" id="keterangan-baru-{{ $santri->id }}" name="keterangan" rows="2" maxlength="1000">{{ old('keterangan') }}</textarea>
+                            </div>
+                        </div>
+                    </form>
+                </details>
             </div>
         </section>
     @empty

@@ -503,7 +503,7 @@ test('commit hanya menyimpan baris valid', function () {
     $this->assertDatabaseCount('absensi_sik', 1);
 });
 
-test('instruktur SIK dapat mengimpor untuk kelompok kewenangannya', function () {
+test('instruktur SIK tidak dapat mengimpor untuk kelompok kewenangannya', function () {
     $fixture = makeRabuMengajiImportFixture();
 
     $xlsxContents = createXlsxFile([
@@ -511,30 +511,21 @@ test('instruktur SIK dapat mengimpor untuk kelompok kewenangannya', function () 
         ['900001', 'Santri Mengaji Satu', '2026-11-18', 'Hadir', ''],
     ]);
 
-    // Instruktur dapat melakukan preview untuk kelompok kewenangannya
     $this->actingAs($fixture['instructorUser'])
         ->post(route('rabu-mengaji.import.preview'), [
             'pertemuan_id' => $fixture['meeting']->id,
             'file' => UploadedFile::fake()->createWithContent('import.xlsx', $xlsxContents),
         ])
-        ->assertOk()
-        ->assertSee('Santri Mengaji Satu');
+        ->assertForbidden();
 
-    // Admin menyimpan data (instruktur dan admin memiliki otorisasi yang sama melalui service)
-    $this->actingAs($fixture['admin'])
-        ->post(route('rabu-mengaji.import.commit'), [
-            'import_token' => session('rabu_mengaji_import_token'),
-        ])
-        ->assertRedirect(route('rabu-mengaji.index'));
-
-    $this->assertDatabaseHas('absensi_sik', [
+    $this->assertDatabaseMissing('absensi_sik', [
         'anggota_periode_sik_id' => $fixture['membership1']->id,
         'pertemuan_id' => $fixture['meeting']->id,
         'status' => 'Hadir',
     ]);
 });
 
-test('instruktur SIK dari kelompok lain dapat mengimpor peserta rabu mengaji', function () {
+test('instruktur SIK dari kelompok lain ditolak mengimpor peserta rabu mengaji', function () {
     $fixture = makeRabuMengajiImportFixture();
 
     $xlsxContents = createXlsxFile([
@@ -548,10 +539,7 @@ test('instruktur SIK dari kelompok lain dapat mengimpor peserta rabu mengaji', f
             'pertemuan_id' => $fixture['meeting']->id,
             'file' => UploadedFile::fake()->createWithContent('import.xlsx', $xlsxContents),
         ])
-        ->assertOk()
-        ->assertViewHas('analysis', function (array $analysis): bool {
-            return $analysis['valid'] === 2 && $analysis['invalid'] === 0;
-        });
+        ->assertForbidden();
 });
 
 test('instruktur SIK tidak aktif ditolak saat mengimpor rabu mengaji', function () {

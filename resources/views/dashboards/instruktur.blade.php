@@ -37,7 +37,7 @@
             <article class="sd-kpi-card">
                 <div class="sd-kpi-heading"><span>Rata-rata kehadiran</span><span class="sd-kpi-icon blue"><x-sik-icon name="report" /></span></div>
                 <strong>{{ $infrastrukturStats['rataKehadiranDisplay'] }}</strong>
-                <small>{{ $infrastrukturStats['totalRekap'] }} baris rekap · ambang {{ $infrastrukturStats['minimumPercentageDisplay'] }}</small>
+                <small>{{ $infrastrukturStats['totalRekap'] }} baris rekap</small>
             </article>
         </div>
     </section>

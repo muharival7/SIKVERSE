@@ -89,12 +89,12 @@ function createAcceptanceMember(array $fixture, Kelompok $group, string $label, 
     ]);
 }
 
-function createAcceptanceActivity(array $fixture, Kelompok $group): Kegiatan
+function createAcceptanceActivity(array $fixture, Kelompok $group, ?string $nama = null): Kegiatan
 {
     return Kegiatan::query()->create([
         'periode_sik_id' => $fixture['period']->id,
         'kelompok_id' => $group->id,
-        'nama_kegiatan' => 'Kegiatan '.$group->nama_kelompok,
+        'nama_kegiatan' => $nama ?? 'Kegiatan '.$group->nama_kelompok,
         'jenis_kegiatan' => 'Kelas',
         'status' => 'Aktif',
     ]);
@@ -275,8 +275,8 @@ test('ringkasan, tabel, dan export memakai format persentase yang sama', functio
     $statuses = array_merge(array_fill(0, 14, 'Hadir'), ['Izin', 'Sakit']);
     $firstMember = createAcceptanceMember($fixture, $fixture['groupA'], 'Persentase 1');
     $secondMember = createAcceptanceMember($fixture, $fixture['groupA'], 'Persentase 2');
-    createAcceptanceAttendance($firstMember, createAcceptanceActivity($fixture, $fixture['groupA']), $statuses);
-    createAcceptanceAttendance($secondMember, createAcceptanceActivity($fixture, $fixture['groupA']), $statuses);
+    createAcceptanceAttendance($firstMember, createAcceptanceActivity($fixture, $fixture['groupA'], 'Persentase A '.$fixture['suffix']), $statuses);
+    createAcceptanceAttendance($secondMember, createAcceptanceActivity($fixture, $fixture['groupA'], 'Persentase B '.$fixture['suffix']), $statuses);
 
     $filters = ['kelompok_id' => $fixture['groupA']->id];
     $indexResponse = $this->actingAs($fixture['admin'])
@@ -324,9 +324,13 @@ test('status evaluasi konsisten di dashboard santri, dashboard admin, dan lapora
     $this->actingAs($kaLab)
         ->get(route('laporan-sik'))
         ->assertOk()
-        ->assertSee('Belum memenuhi ambang kehadiran')
-        ->assertSee('81,25%')
         ->assertSee('Belum Ditetapkan');
+
+    $this->actingAs($kaLab)
+        ->get(route('laporan-sik.tahun', now()->year))
+        ->assertOk()
+        ->assertSee('Belum memenuhi ambang kehadiran')
+        ->assertSee('81,25%');
 
     $this->assertDatabaseHas('kelulusan_sik', [
         'id' => $kelulusan->id,
@@ -366,4 +370,71 @@ test('santri ditolak dari rekap dan instruktur tidak dapat membuka data kelompok
     expect($csv)
         ->toContain($member->santri->nama)
         ->not->toContain($otherMember->santri->nama);
+});
+
+test('kegiatan duplikat tidak membuat nama santri tampil dua kali pada rekap', function () {
+    $fixture = makeAcceptanceBaseFixture();
+    $member = createAcceptanceMember($fixture, $fixture['groupA'], 'Kegiatan Ganda');
+    $namaKegiatan = 'Kegiatan Ganda '.$fixture['suffix'];
+    $first = Kegiatan::query()->create([
+        'periode_sik_id' => $fixture['period']->id,
+        'kelompok_id' => $fixture['groupA']->id,
+        'nama_kegiatan' => $namaKegiatan,
+        'jenis_kegiatan' => 'Kelas',
+        'status' => 'Aktif',
+    ]);
+    $second = Kegiatan::query()->create([
+        'periode_sik_id' => $fixture['period']->id,
+        'kelompok_id' => $fixture['groupA']->id,
+        'nama_kegiatan' => $namaKegiatan,
+        'jenis_kegiatan' => 'Kelas',
+        'status' => 'Aktif',
+    ]);
+    createAcceptanceAttendance($member, $first, ['Hadir']);
+    createAcceptanceAttendance($member, $second, ['Hadir']);
+
+    $response = $this->actingAs($fixture['admin'])
+        ->get(route('rekap-kehadiran-sik.index'))
+        ->assertOk();
+
+    expect(substr_count($response->getContent(), e($member->santri->nama)))->toBe(1);
+    expect($response->getContent())->toContain(e($namaKegiatan));
+
+    $this->get(route('rekap-kehadiran-sik.detail', [
+        'anggota_periode_sik_id' => $member->id,
+        'kegiatan_ids' => [$first->id, $second->id],
+    ]))
+        ->assertOk()
+        ->assertViewHas('item', fn (RekapKehadiranSik $item): bool => $item->total_pertemuan === 2
+            && $item->jumlah_hadir === 2);
+});
+
+test('kegiatan berbeda tetap tampil sebagai baris terpisah dan diberi label', function () {
+    $fixture = makeAcceptanceBaseFixture();
+    $member = createAcceptanceMember($fixture, $fixture['groupA'], 'Kegiatan Berbeda');
+    $utama = Kegiatan::query()->create([
+        'periode_sik_id' => $fixture['period']->id,
+        'kelompok_id' => $fixture['groupA']->id,
+        'nama_kegiatan' => 'Kegiatan Utama '.$fixture['suffix'],
+        'jenis_kegiatan' => 'Kelas',
+        'status' => 'Aktif',
+    ]);
+    $mengaji = Kegiatan::query()->create([
+        'periode_sik_id' => $fixture['period']->id,
+        'kelompok_id' => null,
+        'nama_kegiatan' => 'Rabu Mengaji '.$fixture['suffix'],
+        'jenis_kegiatan' => 'Kelas',
+        'status' => 'Aktif',
+    ]);
+    createAcceptanceAttendance($member, $utama, ['Hadir']);
+    createAcceptanceAttendance($member, $mengaji, ['Hadir']);
+
+    $response = $this->actingAs($fixture['admin'])
+        ->get(route('rekap-kehadiran-sik.index'))
+        ->assertOk();
+
+    expect(substr_count($response->getContent(), e($member->santri->nama)))->toBe(2);
+    expect($response->getContent())
+        ->toContain(e($utama->nama_kegiatan))
+        ->toContain(e($mengaji->nama_kegiatan));
 });

@@ -29,7 +29,6 @@ if ($role === \App\Enums\UserRole::Admin) {
             ['label' => 'Absen', 'route' => 'absensi-sik.index', 'matches' => ['absensi-sik.*'], 'icon' => 'attendance'],
             ['label' => 'Nilai', 'route' => 'nilai.index', 'matches' => ['nilai.*'], 'icon' => 'book'],
             ['label' => 'Rekap Absen', 'route' => 'rekap-kehadiran-sik.index', 'matches' => ['rekap-kehadiran-sik.*'], 'icon' => 'report'],
-            ['label' => 'Rabu Mengaji', 'route' => 'rabu-mengaji.index', 'matches' => ['rabu-mengaji.*'], 'icon' => 'attendance'],
         ];
 
         $secondaryNavItems = [

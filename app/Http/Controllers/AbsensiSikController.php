@@ -8,7 +8,6 @@ use App\Models\AnggotaPeriodeSik;
 use App\Models\InfrastrukturSik;
 use App\Models\Kegiatan;
 use App\Models\Kelompok;
-use App\Models\PeriodeSik;
 use App\Models\Pertemuan;
 use App\Models\RekapKehadiranSik;
 use App\Models\RiwayatAbsensi;
@@ -111,9 +110,11 @@ class AbsensiSikController extends Controller
             $groupsQuery->whereIn('id', $visibleGroupIds);
         }
 
+        $pertemuan = $pertemuanQuery->get();
+
         return view('absensi-sik.index', [
             'absensi' => $absensiQuery->paginate(15)->withQueryString(),
-            'pertemuan' => $pertemuanQuery->get(),
+            'pertemuan' => $pertemuan,
             'anggota' => $anggotaQuery->get(),
             'kelompoks' => $groupsQuery->get(),
             'search' => $search,
@@ -245,6 +246,30 @@ class AbsensiSikController extends Controller
     }
 
     /**
+     * Tandai pertemuan selesai secara eksplisit. Status tidak berubah otomatis
+     * hanya karena tanggal sudah lampau atau absensi sudah diisi.
+     */
+    public function tandaiPertemuanTerlaksana(Request $request, Pertemuan $pertemuan): RedirectResponse
+    {
+        $pertemuan->load(['kegiatan.kelompok', 'kelompokHost']);
+        $instruktur = $this->currentInstructor($request);
+        $this->attendanceAuthorizationService->authorizePertemuanAccess($pertemuan, $instruktur);
+
+        if ($pertemuan->status === 'Terlaksana') {
+            return redirect()->route('absensi-sik.index')
+                ->with('success', 'Pertemuan sudah berstatus Terlaksana.');
+        }
+
+        DB::transaction(function () use ($pertemuan): void {
+            $pertemuan->update(['status' => 'Terlaksana']);
+            $this->attendanceRecapService->syncForPertemuan($pertemuan);
+        });
+
+        return redirect()->route('absensi-sik.index')
+            ->with('success', 'Pertemuan ditandai Terlaksana. Rekap kehadiran telah disinkronkan.');
+    }
+
+    /**
      * Ubah tanggal pertemuan tanpa menyentuh catatan absensi. Absensi tetap
      * terhubung lewat pertemuan_id, sehingga status, identitas santri, dan
      * kegiatan/kelompok tidak berubah.
@@ -269,24 +294,6 @@ class AbsensiSikController extends Controller
             ]);
         }
 
-        $kegiatan = $pertemuan->kegiatan;
-        $periode = $kegiatan?->periode;
-
-        if (! $kegiatan instanceof Kegiatan || ! $periode instanceof PeriodeSik) {
-            throw ValidationException::withMessages([
-                'tanggal_baru' => 'Kegiatan pertemuan tidak memiliki periode SIK yang terdefinisi.',
-            ]);
-        }
-
-        $tanggalMulai = $periode->tanggal_mulai->toDateString();
-        $tanggalSelesai = $periode->tanggal_selesai->toDateString();
-
-        if ($validated['tanggal_baru'] < $tanggalMulai || $validated['tanggal_baru'] > $tanggalSelesai) {
-            throw ValidationException::withMessages([
-                'tanggal_baru' => 'Tanggal pertemuan harus berada dalam rentang periode "'.$periode->nama_periode.'" ('.$tanggalMulai.' hingga '.$tanggalSelesai.').',
-            ]);
-        }
-
         $tanggalLama = $pertemuan->tanggal->toDateString();
 
         if ($tanggalLama === $validated['tanggal_baru']) {
@@ -306,9 +313,13 @@ class AbsensiSikController extends Controller
 
     private function currentInstructor(Request $request): ?InfrastrukturSik
     {
-        if ($request->user()->role !== UserRole::InfrastrukturSik) {
+        $role = $request->user()->role;
+
+        if ($role === UserRole::Admin) {
             return null;
         }
+
+        abort_unless($role === UserRole::InfrastrukturSik, 403);
 
         $instruktur = $request->user()->infrastrukturSik;
         abort_unless($instruktur instanceof InfrastrukturSik, 403);

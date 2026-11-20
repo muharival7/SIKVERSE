@@ -2,20 +2,29 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\UserRole;
 use App\Models\AnggotaPeriodeSik;
 use App\Models\InfrastrukturSik;
+use App\Models\Kelompok;
 use App\Models\MataPelajaran;
 use App\Models\Nilai;
+use App\Models\PeriodeSik;
 use App\Models\Santri;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class NilaiController extends Controller
 {
     public function index(Request $request): View
     {
+        if ($request->user()->role === UserRole::Admin) {
+            return $this->adminIndex($request);
+        }
+
         $instruktur = $this->currentInstructor($request);
 
         $santris = Santri::query()
@@ -34,8 +43,21 @@ class NilaiController extends Controller
             ->orderBy('nama')
             ->get();
 
-        $mataPelajaran = MataPelajaran::query()
+        $mataPelajaranIds = MataPelajaran::query()
             ->where('status', true)
+            ->pluck('id')
+            ->merge(
+                Nilai::query()
+                    ->whereIn('santri_id', $santris->modelKeys())
+                    ->pluck('mata_pelajaran_id')
+                    ->filter()
+            )
+            ->unique()
+            ->values();
+
+        $mataPelajaran = MataPelajaran::query()
+            ->whereIn('id', $mataPelajaranIds)
+            ->orderByDesc('status')
             ->orderBy('semester')
             ->orderBy('nama_mapel')
             ->get();
@@ -46,12 +68,33 @@ class NilaiController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $instruktur = $this->currentInstructor($request);
-        $validated = $request->validate($this->validationRules($request));
+        $validated = $request->validate($this->validationRules());
 
         $this->ensureInstructorCanGrade($instruktur, (int) $validated['santri_id']);
 
-        $validated['infrastruktur_sik_id'] = $instruktur->id;
-        Nilai::create($validated);
+        DB::transaction(function () use ($validated, $instruktur): void {
+            $mataPelajaran = $this->resolveMataPelajaran(
+                $validated['nama_mapel'],
+                $validated['semester']
+            );
+
+            $this->ensureNilaiIsUnique(
+                (int) $validated['santri_id'],
+                (int) $mataPelajaran->id,
+                $validated['semester'],
+                $validated['tahun_ajaran'],
+            );
+
+            Nilai::create([
+                'santri_id' => $validated['santri_id'],
+                'mata_pelajaran_id' => $mataPelajaran->id,
+                'infrastruktur_sik_id' => $instruktur->id,
+                'semester' => $validated['semester'],
+                'tahun_ajaran' => $validated['tahun_ajaran'],
+                'nilai' => $validated['nilai'],
+                'keterangan' => $validated['keterangan'] ?? null,
+            ]);
+        });
 
         return redirect()->route('nilai.index')
             ->with('success', 'Nilai santri berhasil disimpan.');
@@ -62,10 +105,32 @@ class NilaiController extends Controller
         $instruktur = $this->currentInstructor($request);
         abort_unless((int) $nilai->infrastruktur_sik_id === (int) $instruktur->id, 403);
 
-        $validated = $request->validate($this->validationRules($request, $nilai));
+        $validated = $request->validate($this->validationRules());
         $this->ensureInstructorCanGrade($instruktur, (int) $validated['santri_id']);
 
-        $nilai->update($validated);
+        DB::transaction(function () use ($nilai, $validated): void {
+            $mataPelajaran = $this->resolveMataPelajaran(
+                $validated['nama_mapel'],
+                $validated['semester']
+            );
+
+            $this->ensureNilaiIsUnique(
+                (int) $validated['santri_id'],
+                (int) $mataPelajaran->id,
+                $validated['semester'],
+                $validated['tahun_ajaran'],
+                (int) $nilai->id,
+            );
+
+            $nilai->update([
+                'santri_id' => $validated['santri_id'],
+                'mata_pelajaran_id' => $mataPelajaran->id,
+                'semester' => $validated['semester'],
+                'tahun_ajaran' => $validated['tahun_ajaran'],
+                'nilai' => $validated['nilai'],
+                'keterangan' => $validated['keterangan'] ?? null,
+            ]);
+        });
 
         return redirect()->route('nilai.index')
             ->with('success', 'Nilai santri berhasil diperbarui.');
@@ -85,6 +150,70 @@ class NilaiController extends Controller
             ->get();
 
         return view('nilai.transkrip', compact('santri', 'nilai'));
+    }
+
+    private function adminIndex(Request $request): View
+    {
+        $filters = $request->validate([
+            'periode_sik_id' => ['nullable', 'integer', Rule::exists('periode_sik', 'id')],
+            'kelompok_id' => ['nullable', 'integer', Rule::exists('kelompok', 'id')],
+            'semester' => ['nullable', 'string', 'max:50'],
+            'tahun_ajaran' => ['nullable', 'string', 'max:20'],
+            'q' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $nilaiQuery = Nilai::query()->with(['santri', 'mataPelajaran', 'infrastrukturSik']);
+
+        if (filled($filters['periode_sik_id'] ?? null) || filled($filters['kelompok_id'] ?? null)) {
+            $nilaiQuery->whereHas('santri.anggotaPeriode', function ($query) use ($filters): void {
+                if (filled($filters['periode_sik_id'] ?? null)) {
+                    $query->where('periode_sik_id', (int) $filters['periode_sik_id']);
+                }
+
+                if (filled($filters['kelompok_id'] ?? null)) {
+                    $query->where('kelompok_id', (int) $filters['kelompok_id']);
+                }
+            });
+        }
+
+        if (filled($filters['semester'] ?? null)) {
+            $nilaiQuery->where('semester', $filters['semester']);
+        }
+
+        if (filled($filters['tahun_ajaran'] ?? null)) {
+            $nilaiQuery->where('tahun_ajaran', $filters['tahun_ajaran']);
+        }
+
+        $search = trim((string) ($filters['q'] ?? ''));
+        if ($search !== '') {
+            $nilaiQuery->whereHas('santri', function ($query) use ($search): void {
+                $query->where('nama', 'like', '%'.$search.'%')
+                    ->orWhere('nomor_induk', 'like', '%'.$search.'%');
+            });
+        }
+
+        $periods = PeriodeSik::query()->orderByDesc('tahun')->orderByDesc('id')->get();
+        $groupsQuery = Kelompok::query()->orderBy('nama_kelompok')->orderBy('id');
+        if (filled($filters['periode_sik_id'] ?? null)) {
+            $groupsQuery->where('periode_sik_id', (int) $filters['periode_sik_id']);
+        }
+
+        $rataRata = (clone $nilaiQuery)->avg('nilai');
+        $summary = [
+            'total_nilai' => (clone $nilaiQuery)->count(),
+            'total_santri' => (clone $nilaiQuery)->distinct()->count('santri_id'),
+            'total_mata_pelajaran' => (clone $nilaiQuery)->distinct()->count('mata_pelajaran_id'),
+            'rata_rata' => $rataRata !== null ? round((float) $rataRata, 2) : null,
+        ];
+
+        return view('nilai.admin-index', [
+            'nilai' => $nilaiQuery->orderBy('tahun_ajaran')->orderBy('semester')->orderBy('id')->paginate(15)->withQueryString(),
+            'periods' => $periods,
+            'groups' => $groupsQuery->get(),
+            'filters' => $filters,
+            'search' => $search,
+            'summary' => $summary,
+        ]);
     }
 
     private function currentInstructor(Request $request): InfrastrukturSik
@@ -113,25 +242,79 @@ class NilaiController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function validationRules(Request $request, ?Nilai $nilai = null): array
+    private function validationRules(): array
     {
-        $uniqueSantri = Rule::unique('nilai', 'santri_id')
-            ->where('mata_pelajaran_id', $request->input('mata_pelajaran_id'))
-            ->where('semester', $request->input('semester'))
-            ->where('tahun_ajaran', $request->input('tahun_ajaran'))
-            ->ignore($nilai?->id);
-
         return [
-            'santri_id' => ['required', 'integer', 'exists:santris,id', $uniqueSantri],
-            'mata_pelajaran_id' => [
-                'required',
-                'integer',
-                Rule::exists('mata_pelajaran', 'id')->where('status', true),
-            ],
+            'santri_id' => ['required', 'integer', 'exists:santris,id'],
+            'nama_mapel' => ['required', 'string', 'max:255'],
             'semester' => ['required', 'string', 'max:50'],
             'tahun_ajaran' => ['required', 'string', 'max:20'],
             'nilai' => ['required', 'numeric', 'min:0', 'max:100'],
             'keterangan' => ['nullable', 'string', 'max:1000'],
         ];
+    }
+
+    /**
+     * Cari mata pelajaran berdasarkan nama yang diketik (abaikan perbedaan
+     * huruf besar/kecil dan spasi). Bila belum ada, buat master baru dengan
+     * kode yang dijamin unik sehingga mata pelajaran yang sama tidak
+     * terduplikasi dan nilai lama tetap memakai relasi yang sama.
+     */
+    private function resolveMataPelajaran(string $namaMapel, string $semester): MataPelajaran
+    {
+        $namaMapel = preg_replace('/\s+/', ' ', trim($namaMapel)) ?? trim($namaMapel);
+        $normalized = mb_strtolower(str_replace(' ', '', $namaMapel));
+
+        $existing = MataPelajaran::query()
+            ->whereRaw("REPLACE(LOWER(nama_mapel), ' ', '') = ?", [$normalized])
+            ->orderByDesc('status')
+            ->orderBy('id')
+            ->first();
+
+        if ($existing instanceof MataPelajaran) {
+            return $existing;
+        }
+
+        return MataPelajaran::query()->create([
+            'kode_mapel' => $this->generateKodeMapel(),
+            'nama_mapel' => $namaMapel,
+            'sks' => 1,
+            'semester' => ctype_digit($semester) ? max(1, (int) $semester) : 1,
+            'status' => true,
+        ]);
+    }
+
+    private function generateKodeMapel(): string
+    {
+        $sequence = ((int) MataPelajaran::query()->max('id')) + 1;
+
+        do {
+            $kode = 'MP-'.str_pad((string) $sequence, 4, '0', STR_PAD_LEFT);
+            $sequence++;
+        } while (MataPelajaran::query()->where('kode_mapel', $kode)->exists());
+
+        return $kode;
+    }
+
+    private function ensureNilaiIsUnique(
+        int $santriId,
+        int $mataPelajaranId,
+        string $semester,
+        string $tahunAjaran,
+        ?int $ignoreNilaiId = null
+    ): void {
+        $exists = Nilai::query()
+            ->where('santri_id', $santriId)
+            ->where('mata_pelajaran_id', $mataPelajaranId)
+            ->where('semester', $semester)
+            ->where('tahun_ajaran', $tahunAjaran)
+            ->when($ignoreNilaiId !== null, fn ($query) => $query->whereKeyNot($ignoreNilaiId))
+            ->exists();
+
+        if ($exists) {
+            throw ValidationException::withMessages([
+                'nama_mapel' => 'Nilai untuk mata pelajaran, semester, dan tahun ajaran ini sudah ada. Ubah nilai yang sudah tercatat.',
+            ]);
+        }
     }
 }

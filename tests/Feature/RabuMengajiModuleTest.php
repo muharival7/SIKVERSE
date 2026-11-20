@@ -559,19 +559,17 @@ test('absensi ganda tidak dibuat dan status lama tidak ditimpa', function () {
     ]);
 });
 
-test('instruktur aktif dapat membuka input kehadiran lintas kelompok', function () {
+test('instruktur aktif ditolak membuka input kehadiran rabu mengaji lintas kelompok', function () {
     $fixture = createRabuModuleFixture();
     $pertemuan = createRabuModulePertemuan($fixture);
 
     $this->actingAs($fixture['instrukturUser'])
         ->get(route('rabu-mengaji.input', $pertemuan))
-        ->assertOk()
-        ->assertSee($fixture['santriSains']->nama);
+        ->assertForbidden();
 
     $this->actingAs($fixture['instrukturSainsUser'])
         ->get(route('rabu-mengaji.input', $pertemuan))
-        ->assertOk()
-        ->assertSee($fixture['santri']->nama);
+        ->assertForbidden();
 });
 
 test('instruktur tidak aktif ditolak membuka input kehadiran rabu mengaji', function () {

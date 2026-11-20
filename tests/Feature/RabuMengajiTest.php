@@ -257,20 +257,20 @@ test('input page receives pertemuan object not absensi id', function () {
         ->assertSee('Input Kehadiran Rabu Mengaji');
 });
 
-test('instructor can open rabu mengaji data for every group in the same period', function () {
+test('instructor cannot open rabu mengaji pages after the module is locked to admin', function () {
     $fixture = makeRabuMengajiFixture();
 
     $this->actingAs($fixture['instructorUser'])
         ->get(route('rabu-mengaji.index'))
-        ->assertOk()
-        ->assertSee('Santri Sistem Informasi')
-        ->assertSee('Sains')
-        ->assertDontSee('teknologi');
+        ->assertForbidden();
+
+    $this->actingAs($fixture['instructorUser'])
+        ->get(route('rabu-mengaji.show', $fixture['attendance']))
+        ->assertForbidden();
 
     $this->actingAs($fixture['otherInstructorUser'])
-        ->get(route('rabu-mengaji.show', $fixture['attendance']))
-        ->assertOk()
-        ->assertSee('Santri Sistem Informasi');
+        ->get(route('rabu-mengaji.input', $fixture['attendance']->pertemuan_id))
+        ->assertForbidden();
 });
 
 test('santri cannot open the rabu mengaji page', function () {
@@ -318,7 +318,7 @@ test('admin can input attendance for rabu mengaji meeting', function () {
     ]);
 });
 
-test('instruktur_siK can input attendance for shared rabu mengaji activity', function () {
+test('instruktur_siK cannot input attendance for shared rabu mengaji activity', function () {
     $fixture = makeRabuMengajiFixture();
 
     $meeting = Pertemuan::query()->create([
@@ -335,17 +335,16 @@ test('instruktur_siK can input attendance for shared rabu mengaji activity', fun
                 $fixture['attendance']->anggota_periode_sik_id => 'Sakit',
             ],
         ])
-        ->assertRedirect(route('rabu-mengaji.index'))
-        ->assertSessionHas('success');
+        ->assertForbidden();
 
-    $this->assertDatabaseHas('absensi_sik', [
+    $this->assertDatabaseMissing('absensi_sik', [
         'anggota_periode_sik_id' => $fixture['attendance']->anggota_periode_sik_id,
         'pertemuan_id' => $meeting->id,
         'status' => 'Sakit',
     ]);
 });
 
-test('instruktur_siK can input attendance for santri from another group', function () {
+test('instruktur_siK cannot input attendance for santri from another group', function () {
     $fixture = makeRabuMengajiFixture();
 
     $meeting = Pertemuan::query()->create([
@@ -362,10 +361,9 @@ test('instruktur_siK can input attendance for santri from another group', functi
                 $fixture['otherMembership']->id => 'Hadir',
             ],
         ])
-        ->assertRedirect(route('rabu-mengaji.index'))
-        ->assertSessionHas('success');
+        ->assertForbidden();
 
-    $this->assertDatabaseHas('absensi_sik', [
+    $this->assertDatabaseMissing('absensi_sik', [
         'anggota_periode_sik_id' => $fixture['otherMembership']->id,
         'pertemuan_id' => $meeting->id,
         'status' => 'Hadir',

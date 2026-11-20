@@ -64,7 +64,15 @@
                             <td class="text-nowrap">{{ $item->anggotaPeriode?->santri?->nomor_induk ?? '—' }}</td>
                             <td><strong>{{ $item->anggotaPeriode?->santri?->nama ?? '—' }}</strong><span class="d-block small text-muted">{{ $item->pertemuan?->kegiatan?->nama_kegiatan ?? 'Kegiatan SIK' }}</span></td>
                             <td>{{ $item->anggotaPeriode?->kelompok?->nama_kelompok ?? '—' }}</td>
-                            <td class="text-nowrap">Ke-{{ $item->pertemuan?->pertemuan_ke ?? '—' }}</td>
+                            <td class="text-nowrap">
+                                Ke-{{ $item->pertemuan?->pertemuan_ke ?? '—' }}
+                                @if ($item->pertemuan && $item->pertemuan->status === 'Terjadwal')
+                                    <form action="{{ route('absensi-sik.pertemuan.selesai', $item->pertemuan) }}" method="POST" class="mt-1">
+                                        @csrf
+                                        <button class="btn btn-sm btn-outline-success" type="submit">Tandai Selesai</button>
+                                    </form>
+                                @endif
+                            </td>
                             <td class="text-nowrap">
                                 {{ $item->pertemuan?->tanggal?->format('d/m/Y') ?? '—' }}
                                 @if ($item->pertemuan)
@@ -74,7 +82,7 @@
                                             @csrf
                                             <div class="small text-muted mb-1">Tanggal saat ini: {{ $item->pertemuan->tanggal->format('d/m/Y') }}</div>
                                             <label class="visually-hidden" for="tanggal-baru-{{ $item->id }}">Tanggal baru pertemuan</label>
-                                            <input class="form-control form-control-sm" id="tanggal-baru-{{ $item->id }}" type="date" name="tanggal_baru" value="{{ old('tanggal_baru', $item->pertemuan->tanggal->toDateString()) }}" min="{{ $item->pertemuan->kegiatan?->periode?->tanggal_mulai?->toDateString() }}" max="{{ $item->pertemuan->kegiatan?->periode?->tanggal_selesai?->toDateString() }}" required>
+                                            <input class="form-control form-control-sm" id="tanggal-baru-{{ $item->id }}" type="date" name="tanggal_baru" value="{{ old('tanggal_baru', $item->pertemuan->tanggal->toDateString()) }}" required>
                                             <div class="form-check mt-1">
                                                 <input class="form-check-input" type="checkbox" name="konfirmasi" value="1" id="konfirmasi-tanggal-{{ $item->id }}" required>
                                                 <label class="form-check-label small" for="konfirmasi-tanggal-{{ $item->id }}">Saya yakin mengubah tanggal pertemuan ini</label>

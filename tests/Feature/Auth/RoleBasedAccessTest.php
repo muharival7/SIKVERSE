@@ -224,7 +224,7 @@ test('instructor navigation only shows instructor menu links', function () {
         ->assertDontSee('Data Santri')
         ->assertDontSee('Data Dosen')
         ->assertDontSee('Rekap Absensi Dosen')
-        ->assertSee('Rabu Mengaji');
+        ->assertDontSee('Rabu Mengaji');
 });
 
 test('admin navigation shows rekap absensi dosen menu', function () {

@@ -198,6 +198,10 @@ Route::middleware($authenticatedMiddleware)->group(function (): void {
             ->whereNumber('pertemuan')
             ->name('absensi-sik.pertemuan.ubah-tanggal');
 
+        Route::post('/absensi-sik/pertemuan/{pertemuan}/selesai', [AbsensiSikController::class, 'tandaiPertemuanTerlaksana'])
+            ->whereNumber('pertemuan')
+            ->name('absensi-sik.pertemuan.selesai');
+
         Route::get('/rekap-kehadiran-sik', [RekapKehadiranSikController::class, 'index'])
             ->name('rekap-kehadiran-sik.index');
         Route::get('/rekap-kehadiran-sik/export', [RekapKehadiranSikController::class, 'export'])
@@ -209,7 +213,7 @@ Route::middleware($authenticatedMiddleware)->group(function (): void {
             ->name('rekap-kehadiran-sik.show');
     });
 
-    Route::middleware(['auth', 'password.changed', 'role:admin,infrastruktur_sik'])->group(function (): void {
+    Route::middleware(['auth', 'password.changed', 'role:admin'])->group(function (): void {
         Route::get('/rabu-mengaji', [RabuMengajiController::class, 'index'])
             ->name('rabu-mengaji.index');
         Route::get('/rabu-mengaji/{absensiSik}', [RabuMengajiController::class, 'show'])
@@ -232,10 +236,18 @@ Route::middleware($authenticatedMiddleware)->group(function (): void {
             ->name('rabu-mengaji.import.template');
     });
 
+    Route::middleware('role:admin,infrastruktur_sik')->group(function (): void {
+        Route::get('/nilai', [NilaiController::class, 'index'])
+            ->name('nilai.index');
+    });
+
     Route::middleware('role:infrastruktur_sik')->group(function (): void {
 
-        Route::resource('nilai', NilaiController::class)
-            ->only(['index', 'store', 'update']);
+        Route::post('/nilai', [NilaiController::class, 'store'])
+            ->name('nilai.store');
+        Route::match(['put', 'patch'], '/nilai/{nilai}', [NilaiController::class, 'update'])
+            ->whereNumber('nilai')
+            ->name('nilai.update');
 
         Route::get('/kelompok-saya', [KelompokController::class, 'indexInstruktur'])
             ->name('instruktur.kelompok.index');
@@ -281,6 +293,11 @@ Route::middleware($authenticatedMiddleware)->group(function (): void {
             RekapKehadiranSikController::class,
             'laporan',
         ])->name('laporan-sik');
+
+        Route::get('/laporan-sik/{tahun}', [
+            RekapKehadiranSikController::class,
+            'laporanTahun',
+        ])->whereNumber('tahun')->name('laporan-sik.tahun');
     });
 
     // ==================================================

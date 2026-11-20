@@ -12,6 +12,7 @@
             <a href="{{ route('kelompok.index') }}" class="btn btn-outline-secondary">Kelola Kelompok</a>
             <a href="{{ route('anggota-periode-sik.create') }}" class="btn btn-outline-secondary">Tetapkan Kelompok</a>
             <a href="{{ route('periode-sik.index') }}" class="btn btn-outline-secondary">Periode SIK</a>
+            <a href="{{ route('nilai.index') }}" class="btn btn-outline-secondary"><x-sik-icon name="book" class="me-1" /> Rekap Nilai Santri</a>
             <a href="{{ route('santris.import') }}" class="btn btn-outline-danger"><x-sik-icon name="upload" class="me-1" /> Import Excel</a>
             <a href="{{ route('santris.create') }}" class="btn btn-primary">+ Tambah Santri</a>
         </div>

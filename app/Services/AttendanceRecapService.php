@@ -144,6 +144,40 @@ class AttendanceRecapService
             return $this->emptyMetric($anggotaPeriodeSikId);
         }
 
+        $metric = $this->calculateForKegiatanIds(
+            $anggotaPeriodeSikId,
+            $this->kegiatanForAnggota($anggota)->modelKeys()
+        );
+
+        return $this->anggotaMetricCache[$anggotaPeriodeSikId] = [
+            ...$metric,
+            'kegiatan_id' => null,
+        ];
+    }
+
+    /**
+     * Agregasi untuk sekumpulan kegiatan yang dianggap satu entitas tampilan.
+     * Dipakai agar kegiatan duplikat tidak membuat santri tampil berkali-kali.
+     *
+     * @param  array<int, int>  $kegiatanIds
+     * @return array<string, mixed>
+     */
+    public function calculateForKegiatanIds(int $anggotaPeriodeSikId, array $kegiatanIds): array
+    {
+        $requestedIds = array_values(array_unique(array_map('intval', $kegiatanIds)));
+        $anggota = AnggotaPeriodeSik::query()->find($anggotaPeriodeSikId);
+
+        if ($anggota === null || $requestedIds === []) {
+            return $this->emptyMetric($anggotaPeriodeSikId);
+        }
+
+        $allowedIds = $this->kegiatanForAnggota($anggota)->modelKeys();
+        $validIds = array_values(array_intersect($requestedIds, $allowedIds));
+
+        if ($validIds === []) {
+            return $this->emptyMetric($anggotaPeriodeSikId);
+        }
+
         $totals = [
             'total_pertemuan' => 0,
             'jumlah_absensi' => 0,
@@ -154,8 +188,8 @@ class AttendanceRecapService
             'jumlah_tidak_lengkap' => 0,
         ];
 
-        foreach ($this->kegiatanForAnggota($anggota) as $kegiatan) {
-            $metric = $this->calculate($anggotaPeriodeSikId, (int) $kegiatan->id);
+        foreach ($validIds as $kegiatanId) {
+            $metric = $this->calculate($anggotaPeriodeSikId, $kegiatanId);
 
             foreach ($totals as $key => $value) {
                 $totals[$key] = $value + $metric[$key];
@@ -165,9 +199,9 @@ class AttendanceRecapService
         $tersedia = $totals['total_pertemuan'] > 0;
         $memenuhi = $this->meetsThreshold($totals['jumlah_hadir'], $totals['total_pertemuan']);
 
-        return $this->anggotaMetricCache[$anggotaPeriodeSikId] = [
+        return [
             'anggota_periode_sik_id' => $anggotaPeriodeSikId,
-            'kegiatan_id' => null,
+            'kegiatan_id' => count($validIds) === 1 ? $validIds[0] : null,
             ...$totals,
             'persentase' => $tersedia && $totals['jumlah_absensi'] > 0
                 ? ($totals['jumlah_hadir'] / $totals['total_pertemuan']) * 100
@@ -188,19 +222,25 @@ class AttendanceRecapService
     public function displayRows(Collection $anggota): Collection
     {
         return $anggota->flatMap(function (AnggotaPeriodeSik $item): Collection {
-            $kegiatan = $this->kegiatanForAnggota($item);
+            $groups = $this->groupedKegiatanForAnggota($item);
 
-            if ($kegiatan->isEmpty()) {
+            if ($groups->isEmpty()) {
                 return collect([
                     $this->makeDisplayRow($item, null, $this->calculateForAnggota((int) $item->id)),
                 ]);
             }
 
-            return $kegiatan->map(fn (Kegiatan $activity): RekapKehadiranSik => $this->makeDisplayRow(
-                $item,
-                $activity,
-                $this->calculate((int) $item->id, (int) $activity->id)
-            ));
+            return $groups->map(function (array $group) use ($item): RekapKehadiranSik {
+                /** @var Kegiatan $kegiatan */
+                $kegiatan = $group['kegiatan'];
+
+                return $this->makeDisplayRow(
+                    $item,
+                    $kegiatan,
+                    $this->calculateForKegiatanIds((int) $item->id, $group['kegiatan_ids']),
+                    $group['kegiatan_ids']
+                );
+            });
         })->values();
     }
 
@@ -209,22 +249,31 @@ class AttendanceRecapService
      * bagian dari periode dan kelompok anggota; baris boleh dibuat tanpa
      * catatan rekap tersimpan.
      */
-    public function displayRowForAnggota(AnggotaPeriodeSik $anggota, ?int $kegiatanId): ?RekapKehadiranSik
-    {
-        if ($kegiatanId === null) {
+    /**
+     * @param  array<int, int>|null  $kegiatanIds
+     */
+    public function displayRowForAnggota(
+        AnggotaPeriodeSik $anggota,
+        ?int $kegiatanId,
+        ?array $kegiatanIds = null
+    ): ?RekapKehadiranSik {
+        $requestedIds = $kegiatanIds ?? (($kegiatanId !== null) ? [$kegiatanId] : []);
+
+        if ($requestedIds === []) {
             return $this->makeDisplayRow($anggota, null, $this->calculateForAnggota((int) $anggota->id));
         }
 
-        $kegiatan = $this->kegiatanForAnggota($anggota)->firstWhere('id', $kegiatanId);
+        $group = $this->matchingKegiatanGroup($anggota, $requestedIds);
 
-        if (! $kegiatan instanceof Kegiatan) {
+        if ($group === null) {
             return null;
         }
 
         return $this->makeDisplayRow(
             $anggota,
-            $kegiatan,
-            $this->calculate((int) $anggota->id, (int) $kegiatan->id)
+            $group['kegiatan'],
+            $this->calculateForKegiatanIds((int) $anggota->id, $group['kegiatan_ids']),
+            $group['kegiatan_ids']
         );
     }
 
@@ -234,16 +283,26 @@ class AttendanceRecapService
      *
      * @return Collection<int, Pertemuan>
      */
-    public function pertemuanForAnggota(AnggotaPeriodeSik $anggota, ?int $kegiatanId): Collection
-    {
-        $kegiatanIds = $this->kegiatanForAnggota($anggota)
-            ->when(
-                $kegiatanId !== null,
-                fn (Collection $items): Collection => $items->where('id', $kegiatanId)
-            )
-            ->modelKeys();
+    /**
+     * @param  array<int, int>|null  $kegiatanIds
+     */
+    public function pertemuanForAnggota(
+        AnggotaPeriodeSik $anggota,
+        ?int $kegiatanId,
+        ?array $kegiatanIds = null
+    ): Collection {
+        $requestedIds = $kegiatanIds ?? (($kegiatanId !== null) ? [$kegiatanId] : []);
+        $group = $requestedIds === [] ? null : $this->matchingKegiatanGroup($anggota, $requestedIds);
 
-        if ($kegiatanIds === []) {
+        if ($group !== null) {
+            $kegiatanIdsForQuery = $group['kegiatan_ids'];
+        } elseif ($requestedIds === []) {
+            $kegiatanIdsForQuery = $this->kegiatanForAnggota($anggota)->modelKeys();
+        } else {
+            return collect();
+        }
+
+        if ($kegiatanIdsForQuery === []) {
             return collect();
         }
 
@@ -252,7 +311,7 @@ class AttendanceRecapService
                 'absensi' => fn ($query) => $query->where('anggota_periode_sik_id', (int) $anggota->id),
                 'kegiatan',
             ])
-            ->whereIn('kegiatan_id', $kegiatanIds)
+            ->whereIn('kegiatan_id', $kegiatanIdsForQuery)
             ->orderBy('tanggal')
             ->orderBy('pertemuan_ke')
             ->orderBy('id')
@@ -668,6 +727,51 @@ class AttendanceRecapService
             ->all();
     }
 
+    /**
+     * Kegiatan dengan periode, kelompok, dan nama yang sama dibaca sebagai
+     * satu entitas rekap. Ini mencegah santri tampil ganda hanya karena ada
+     * dua baris kegiatan duplikat di database.
+     *
+     * @return Collection<int, array{kegiatan: Kegiatan, kegiatan_ids: array<int, int>}>
+     */
+    private function groupedKegiatanForAnggota(AnggotaPeriodeSik $anggota): Collection
+    {
+        return $this->kegiatanForAnggota($anggota)
+            ->groupBy(fn (Kegiatan $kegiatan): string => $this->activityGroupKey($kegiatan))
+            ->map(function (Collection $items): array {
+                $sorted = $items->sortBy('id')->values();
+                /** @var Kegiatan $primary */
+                $primary = $sorted->first();
+
+                return [
+                    'kegiatan' => $primary,
+                    'kegiatan_ids' => $sorted->modelKeys(),
+                ];
+            })
+            ->values();
+    }
+
+    /**
+     * @param  array<int, int>  $kegiatanIds
+     * @return array{kegiatan: Kegiatan, kegiatan_ids: array<int, int>}|null
+     */
+    private function matchingKegiatanGroup(AnggotaPeriodeSik $anggota, array $kegiatanIds): ?array
+    {
+        $requestedIds = array_map('intval', $kegiatanIds);
+
+        return $this->groupedKegiatanForAnggota($anggota)
+            ->first(fn (array $group): bool => array_intersect($group['kegiatan_ids'], $requestedIds) !== []);
+    }
+
+    private function activityGroupKey(Kegiatan $kegiatan): string
+    {
+        return implode('|', [
+            (int) $kegiatan->periode_sik_id,
+            $kegiatan->kelompok_id === null ? 'bersama' : (int) $kegiatan->kelompok_id,
+            mb_strtolower(trim((string) $kegiatan->nama_kegiatan)),
+        ]);
+    }
+
     /** @return Collection<int, Kegiatan> */
     private function kegiatanForAnggota(AnggotaPeriodeSik $anggota): Collection
     {
@@ -683,11 +787,15 @@ class AttendanceRecapService
             ->get();
     }
 
-    /** @param array<string, mixed> $metric */
+    /**
+     * @param  array<string, mixed>  $metric
+     * @param  array<int, int>  $kegiatanIds
+     */
     private function makeDisplayRow(
         AnggotaPeriodeSik $anggota,
         ?Kegiatan $kegiatan,
-        array $metric
+        array $metric,
+        array $kegiatanIds = []
     ): RekapKehadiranSik {
         $row = new RekapKehadiranSik([
             'anggota_periode_sik_id' => (int) $anggota->id,
@@ -705,6 +813,7 @@ class AttendanceRecapService
         $row->setRelation('anggotaPeriode', $anggota);
         $row->setRelation('kegiatan', $kegiatan);
         $row->setAttribute('attendance_metric', $metric);
+        $row->setAttribute('kegiatan_ids', array_values(array_unique($kegiatanIds)));
 
         return $row;
     }

@@ -33,7 +33,14 @@
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-body p-4">
             <h2 class="h5 fw-bold mb-1">Capaian kelulusan per tahun</h2>
-            <p class="text-muted mb-4">Proporsi status evaluasi kelulusan dari peserta yang sudah dicatat.</p>
+            <p class="text-muted mb-4">Pilih tahun untuk membuka rincian evaluasi kelulusan santri.</p>
+            <div class="d-flex flex-wrap gap-2 mb-4">
+                @forelse ($kelulusanTahunan as $tahun)
+                    <a class="btn btn-sm btn-outline-danger" href="{{ route('laporan-sik.tahun', $tahun['tahun']) }}">Tahun {{ $tahun['tahun'] }}</a>
+                @empty
+                    <span class="text-muted">Belum ada tahun yang dapat dipilih.</span>
+                @endforelse
+            </div>
             @forelse ($kelulusanTahunan as $tahun)
                 @php
                     $total = max(1, (int) $tahun['total']);
@@ -42,7 +49,10 @@
                     $belumWidth = ((int) $tahun['belum_ditetapkan'] / $total) * 100;
                 @endphp
                 <div class="mb-3">
-                    <div class="d-flex justify-content-between small mb-1"><strong>{{ $tahun['tahun'] }}</strong><span class="text-muted">{{ $tahun['total'] }} peserta</span></div>
+                    <div class="d-flex justify-content-between small mb-1">
+                        <a class="fw-semibold text-decoration-none" href="{{ route('laporan-sik.tahun', $tahun['tahun']) }}">{{ $tahun['tahun'] }}</a>
+                        <span class="text-muted">{{ $tahun['total'] }} peserta</span>
+                    </div>
                     <div class="progress" style="height:14px" role="img"
                         aria-label="{{ $tahun['tahun'] }}: {{ $tahun['lulus'] }} lulus">
                         <div class="progress-bar bg-success" style="width: {{ $lulusWidth }}%"></div>
@@ -62,7 +72,7 @@
             <p class="text-muted mb-3">Ringkasan status evaluasi kelulusan per tahun menggunakan satu sumber metrik kehadiran.</p>
             <div class="table-responsive">
                 <table class="table table-hover table-bordered align-middle mb-0">
-                    <thead class="table-light"><tr><th>Tahun</th><th>Total Peserta</th><th>Lulus</th><th>Tidak Lulus</th><th>Belum Ditetapkan</th><th>Persentase Lulus</th></tr></thead>
+                    <thead class="table-light"><tr><th>Tahun</th><th>Total Peserta</th><th>Lulus</th><th>Tidak Lulus</th><th>Belum Ditetapkan</th><th>Persentase Lulus</th><th>Aksi</th></tr></thead>
                     <tbody>
                         @forelse ($kelulusanTahunan as $tahun)
                             <tr>
@@ -72,76 +82,14 @@
                                 <td>{{ $tahun['tidak_lulus'] }}</td>
                                 <td>{{ $tahun['belum_ditetapkan'] }}</td>
                                 <td>{{ $tahun['persentase_lulus_display'] }}</td>
+                                <td class="text-nowrap"><a class="btn btn-sm btn-outline-primary" href="{{ route('laporan-sik.tahun', $tahun['tahun']) }}">Lihat Detail</a></td>
                             </tr>
                         @empty
-                            <tr><td colspan="6" class="text-center text-muted py-4">Belum ada data kelulusan tahunan.</td></tr>
+                            <tr><td colspan="7" class="text-center text-muted py-4">Belum ada data kelulusan tahunan.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
             </div>
-        </div>
-    </div>
-</div>
-
-<div class="card border-0 shadow-sm mt-4" id="detail-evaluasi-kelulusan">
-    <div class="card-body p-4">
-        <h2 class="h5 fw-bold mb-1">Detail Evaluasi Kelulusan Santri</h2>
-        <p class="text-muted mb-3">Rincian status evaluasi, kehadiran, dan alasan evaluasi setiap santri.</p>
-
-        <div class="table-responsive">
-            <table class="table table-hover table-bordered align-middle">
-                <thead class="table-light">
-                    <tr>
-                        <th>No</th>
-                        <th>Nama Santri</th>
-                        <th>Nomor Induk</th>
-                        <th>Periode</th>
-                        <th>Kelompok</th>
-                        <th>Terlaksana</th>
-                        <th>Hadir</th>
-                        <th>Izin</th>
-                        <th>Sakit</th>
-                        <th>Alpha</th>
-                        <th>Persentase</th>
-                        <th>Status Kehadiran</th>
-                        <th>Status Evaluasi</th>
-                        <th>Alasan Evaluasi</th>
-                        <th>Keterangan</th>
-                    </tr>
-                </thead>
-
-                <tbody>
-                    @forelse ($detailKelulusan as $index => $detail)
-                        @php
-                            $anggota = $detail->anggotaPeriodeSik;
-                            $santri = $anggota?->santri;
-                            $attendance = $detail->attendance;
-                        @endphp
-
-                        <tr>
-                            <td>{{ $index + 1 }}</td>
-                            <td>{{ $santri?->nama ?? '-' }}</td>
-                            <td>{{ $santri?->nomor_induk ?? '-' }}</td>
-                            <td>{{ $anggota?->periode?->tahun ?? '-' }}</td>
-                            <td>{{ $anggota?->kelompok?->nama_kelompok ?? '-' }}</td>
-                            <td class="text-center">{{ $attendance['total_pertemuan'] }}</td>
-                            <td class="text-center">{{ $attendance['jumlah_hadir'] }}</td>
-                            <td class="text-center">{{ $attendance['jumlah_izin'] }}</td>
-                            <td class="text-center">{{ $attendance['jumlah_sakit'] }}</td>
-                            <td class="text-center">{{ $attendance['jumlah_alpha'] }}</td>
-                            <td class="text-center">{{ $detail->persentase_kehadiran_display }}</td>
-                            <td class="text-center">{{ $attendance['status'] }}</td>
-                            <td><span class="badge {{ $detail->evaluasi_badge_class }}">{{ $detail->evaluasi_label }}</span></td>
-                            <td>{{ $detail->alasan_kehadiran }}</td>
-                            <td>{{ $detail->keterangan ?: '-' }}</td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="15" class="text-center text-muted py-4">Belum ada data evaluasi kelulusan santri.</td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
         </div>
     </div>
 </div>

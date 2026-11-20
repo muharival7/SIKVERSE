@@ -10,7 +10,7 @@
         <div class="sd-welcome-copy">
             <span class="sd-eyebrow">SIKVERSE · MONITORING MUTU</span>
             <h1 id="kalab-welcome-title">Selamat datang, Ka-Lab Mutu</h1>
-            <p>Di halaman ini Anda dapat melihat laporan jumlah mahasiswa yang lulus setiap tahun, membandingkan antartahun, serta memantau perubahan kelulusan sebagai bahan evaluasi mutu. Ambang kehadiran: {{ $minimumPercentageDisplay }} dari pertemuan Terlaksana.</p>
+            <p>Di halaman ini Anda dapat melihat laporan jumlah mahasiswa yang lulus setiap tahun, membandingkan antartahun, serta memantau perubahan kelulusan sebagai bahan evaluasi mutu.</p>
         </div>
     </section>
 

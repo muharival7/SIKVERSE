@@ -21,7 +21,7 @@
     <section class="row g-3" aria-label="Ringkasan SIK">
         <div class="col-6 col-xl-3"><article class="sd-kpi-card"><div class="sd-kpi-heading"><span>Total Santri</span><span class="sd-kpi-icon maroon"><x-sik-icon name="students" /></span></div><strong>{{ number_format($adminStats['totalSantri']) }}</strong><small>Data santri terdaftar</small></article></div>
         <div class="col-6 col-xl-3"><article class="sd-kpi-card"><div class="sd-kpi-heading"><span>Total Dosen</span><span class="sd-kpi-icon gold"><x-sik-icon name="users" /></span></div><strong>{{ number_format($adminStats['totalDosen']) }}</strong><small>Data dosen terdaftar</small></article></div>
-        <div class="col-6 col-xl-3"><article class="sd-kpi-card"><div class="sd-kpi-heading"><span>Rata-rata Kehadiran</span><span class="sd-kpi-icon blue"><x-sik-icon name="calendar" /></span></div><strong>{{ $adminStats['rataKehadiranDisplay'] }}</strong><small>{{ number_format($adminStats['totalRekap']) }} baris rekap · ambang {{ $adminStats['minimumPercentageDisplay'] }}</small></article></div>
+        <div class="col-6 col-xl-3"><article class="sd-kpi-card"><div class="sd-kpi-heading"><span>Rata-rata Kehadiran</span><span class="sd-kpi-icon blue"><x-sik-icon name="calendar" /></span></div><strong>{{ $adminStats['rataKehadiranDisplay'] }}</strong><small>{{ number_format($adminStats['totalRekap']) }} baris rekap</small></article></div>
         <div class="col-6 col-xl-3"><article class="sd-kpi-card"><div class="sd-kpi-heading"><span>Santri Lulus</span><span class="sd-kpi-icon green"><x-sik-icon name="check" /></span></div><strong>{{ number_format($adminStats['mahasiswaLulus']) }}</strong><small>{{ $dashboardPeriod?->nama_periode ?? 'Periode aktif' }}</small></article></div>
     </section>
 
@@ -49,7 +49,7 @@
                         @endif
                     </div>
                 </div>
-                <div class="d-flex justify-content-end mt-3"><a class="sd-text-link" href="{{ route('rekap-kehadiran-sik.index') }}">Buka rekap absensi <x-sik-icon name="arrow-right" /></a></div>
+                <div class="d-flex justify-content-end mt-3 gap-3"><a class="sd-text-link" href="{{ route('nilai.index') }}">Buka nilai santri <x-sik-icon name="arrow-right" /></a><a class="sd-text-link" href="{{ route('rekap-kehadiran-sik.index') }}">Buka rekap absensi <x-sik-icon name="arrow-right" /></a></div>
             </div>
         </section>
 

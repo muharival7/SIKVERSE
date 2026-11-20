@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\AttendanceRecapService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -117,13 +118,25 @@ class RekapKehadiranSikController extends Controller
         $validated = $request->validate([
             'anggota_periode_sik_id' => ['required', 'integer', Rule::exists('anggota_periode_sik', 'id')],
             'kegiatan_id' => ['nullable', 'integer', Rule::exists('kegiatan', 'id')],
+            'kegiatan_ids' => ['nullable', 'array', 'max:50'],
+            'kegiatan_ids.*' => ['integer', Rule::exists('kegiatan', 'id')],
         ]);
+
+        $kegiatanId = filled($validated['kegiatan_id'] ?? null) ? (int) $validated['kegiatan_id'] : null;
+        $kegiatanIds = collect($validated['kegiatan_ids'] ?? [])
+            ->map(fn ($id): int => (int) $id)
+            ->push($kegiatanId)
+            ->filter(fn ($id): bool => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
 
         return $this->renderDetail(
             $request,
             $filters,
             (int) $validated['anggota_periode_sik_id'],
-            filled($validated['kegiatan_id'] ?? null) ? (int) $validated['kegiatan_id'] : null
+            $kegiatanId,
+            $kegiatanIds === [] ? null : $kegiatanIds
         );
     }
 
@@ -194,19 +207,83 @@ class RekapKehadiranSikController extends Controller
      */
     public function laporan(): View
     {
-        $kelulusanTahunan = $this->attendanceRecapService->graduationAnnualSummary()
-            ->map(function (array $row): array {
-                $persentase = $row['total'] > 0
-                    ? ($row['lulus'] / $row['total']) * 100
-                    : null;
+        $kelulusanTahunan = $this->decorateAnnualSummary(
+            $this->attendanceRecapService->graduationAnnualSummary()
+        );
 
-                return [
-                    ...$row,
-                    'persentase_lulus' => $persentase,
-                    'persentase_lulus_display' => $this->percentageLabelOrDash($persentase),
-                ];
-            });
-        $detailKelulusan = $this->attendanceRecapService->graduationEvaluations()
+        $totalPeserta = (int) $kelulusanTahunan->sum('total');
+        $totalLulus = (int) $kelulusanTahunan->sum('lulus');
+        $persentaseKelulusan = $totalPeserta > 0
+            ? ($totalLulus / $totalPeserta) * 100
+            : null;
+
+        return view('laporan-sik.index', [
+            'kelulusanTahunan' => $kelulusanTahunan,
+            'minimumPercentage' => $this->attendanceRecapService->minimumPercentage(),
+            'minimumPercentageDisplay' => $this->percentageLabel($this->attendanceRecapService->minimumPercentage()),
+            'totalPeserta' => $totalPeserta,
+            'totalLulus' => $totalLulus,
+            'persentaseKelulusan' => $persentaseKelulusan,
+            'persentaseKelulusanDisplay' => $this->attendanceRecapService->formatPercentage($persentaseKelulusan),
+            'persentaseKelulusanLabel' => $this->percentageLabelOrDash($persentaseKelulusan),
+        ]);
+    }
+
+    /**
+     * Halaman detail laporan kelulusan satu tahun. Bersifat baca-saja dan
+     * memakai metrik kehadiran yang sama dengan ringkasan tahunan.
+     */
+    public function laporanTahun(int $tahun): View
+    {
+        $ringkasan = $this->decorateAnnualSummary(
+            $this->attendanceRecapService->graduationAnnualSummary()
+        )->firstWhere('tahun', $tahun);
+
+        abort_if($ringkasan === null, 404);
+
+        $detailKelulusan = $this->graduationDetailKelulusan($tahun);
+
+        return view('laporan-sik.tahun', [
+            'tahun' => $tahun,
+            'ringkasan' => $ringkasan,
+            'detailKelulusan' => $detailKelulusan,
+            'minimumPercentage' => $this->attendanceRecapService->minimumPercentage(),
+            'minimumPercentageDisplay' => $this->percentageLabel($this->attendanceRecapService->minimumPercentage()),
+        ]);
+    }
+
+    /**
+     * @param  Collection<int, array<string, mixed>>  $summary
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function decorateAnnualSummary(Collection $summary): Collection
+    {
+        return $summary->map(function (array $row): array {
+            $persentase = $row['total'] > 0
+                ? ($row['lulus'] / $row['total']) * 100
+                : null;
+
+            return [
+                ...$row,
+                'persentase_lulus' => $persentase,
+                'persentase_lulus_display' => $this->percentageLabelOrDash($persentase),
+            ];
+        })->values();
+    }
+
+    /**
+     * @return Collection<int, KelulusanSik>
+     */
+    private function graduationDetailKelulusan(?int $tahun = null): Collection
+    {
+        return $this->attendanceRecapService->graduationEvaluations()
+            ->filter(function (array $row) use ($tahun): bool {
+                if ($tahun === null) {
+                    return true;
+                }
+
+                return (int) ($row['kelulusan']->anggotaPeriodeSik?->periode?->tahun ?? 0) === $tahun;
+            })
             ->map(function (array $row): KelulusanSik {
                 $detail = $row['kelulusan'];
                 $evaluasi = $row['evaluasi'];
@@ -226,25 +303,8 @@ class RekapKehadiranSikController extends Controller
                 $detail->setAttribute('alasan_kehadiran', $evaluasi['alasan']);
 
                 return $detail;
-            });
-
-        $totalPeserta = (int) $kelulusanTahunan->sum('total');
-        $totalLulus = (int) $kelulusanTahunan->sum('lulus');
-        $persentaseKelulusan = $totalPeserta > 0
-            ? ($totalLulus / $totalPeserta) * 100
-            : null;
-
-        return view('laporan-sik.index', [
-            'kelulusanTahunan' => $kelulusanTahunan,
-            'detailKelulusan' => $detailKelulusan,
-            'minimumPercentage' => $this->attendanceRecapService->minimumPercentage(),
-            'minimumPercentageDisplay' => $this->percentageLabel($this->attendanceRecapService->minimumPercentage()),
-            'totalPeserta' => $totalPeserta,
-            'totalLulus' => $totalLulus,
-            'persentaseKelulusan' => $persentaseKelulusan,
-            'persentaseKelulusanDisplay' => $this->attendanceRecapService->formatPercentage($persentaseKelulusan),
-            'persentaseKelulusanLabel' => $this->percentageLabelOrDash($persentaseKelulusan),
-        ]);
+            })
+            ->values();
     }
 
     /** @return array<string, mixed> */
@@ -297,21 +357,27 @@ class RekapKehadiranSikController extends Controller
 
     /**
      * @param  array<string, mixed>  $filters
+     * @param  array<int, int>|null  $kegiatanIds
      */
-    private function renderDetail(Request $request, array $filters, int $anggotaId, ?int $kegiatanId): View
-    {
+    private function renderDetail(
+        Request $request,
+        array $filters,
+        int $anggotaId,
+        ?int $kegiatanId,
+        ?array $kegiatanIds = null
+    ): View {
         $user = $request->user();
         abort_unless($user instanceof User, 401);
         $filterInstructor = null;
         $anggota = $this->filteredAnggotaQuery($user, $filters, $filterInstructor)
             ->whereKey($anggotaId)
             ->firstOrFail();
-        $item = $this->attendanceRecapService->displayRowForAnggota($anggota, $kegiatanId);
+        $item = $this->attendanceRecapService->displayRowForAnggota($anggota, $kegiatanId, $kegiatanIds);
         abort_if($item === null, 404);
 
         $this->attendanceRecapService->prepareDisplay([$item]);
 
-        $riwayat = $this->attendanceRecapService->pertemuanForAnggota($anggota, $kegiatanId);
+        $riwayat = $this->attendanceRecapService->pertemuanForAnggota($anggota, $kegiatanId, $kegiatanIds);
 
         foreach ($riwayat as $pertemuan) {
             $pertemuan->setAttribute(

@@ -136,12 +136,18 @@
                                 $detailParams = array_filter([
                                     'anggota_periode_sik_id' => $item->anggota_periode_sik_id,
                                     'kegiatan_id' => $item->kegiatan_id,
-                                ] + $filterQuery, fn ($value): bool => $value !== null && $value !== '');
+                                    'kegiatan_ids' => $item->kegiatan_ids,
+                                ] + $filterQuery, fn ($value): bool => $value !== null && $value !== '' && $value !== []);
                             @endphp
 
                             <tr>
                                 <td class="text-center">{{ $loop->iteration }}</td>
-                                <td class="fw-semibold">{{ $namaSantri }}</td>
+                                <td class="fw-semibold">
+                                    {{ $namaSantri }}
+                                    @if ($item->kegiatan?->nama_kegiatan)
+                                        <div class="small fw-normal text-muted">{{ $item->kegiatan->nama_kegiatan }} · {{ $item->anggotaPeriode?->periode?->nama_periode ?? '-' }}</div>
+                                    @endif
+                                </td>
                                 <td>{{ $nomorInduk }}</td>
                                 <td>{{ $namaKelompok }}</td>
                                 <td class="text-center">{{ $item->total_pertemuan ?? 0 }}</td>

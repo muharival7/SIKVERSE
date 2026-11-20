@@ -56,7 +56,6 @@
                                 <span>{{ $attendancePercentageDisplay === '—' ? $graduationEvaluation['metric']['status'] : 'Kehadiran' }}</span>
                             </div>
                         </div>
-                        <span class="sd-ring-caption">Ambang {{ $minimumPercentageDisplay }} dari pertemuan Terlaksana</span>
                     </div>
 
                     <div class="sd-status-summary" aria-label="Rincian status absensi">

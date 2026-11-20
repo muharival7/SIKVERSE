@@ -105,12 +105,29 @@ test('admin berhasil mengubah tanggal pertemuan yang sudah memiliki absensi deng
     ]);
 });
 
-test('perubahan tanggal ditolak bila di luar rentang periode SIK', function () {
+test('perubahan tanggal di luar rentang periode SIK kini diizinkan', function () {
     $fixture = createUbahTanggalFixture();
 
     $this->actingAs($fixture['admin'])
         ->post(route('absensi-sik.pertemuan.ubah-tanggal', $fixture['pertemuan']), [
             'tanggal_baru' => '2027-01-01',
+            'konfirmasi' => '1',
+        ])
+        ->assertRedirect(route('absensi-sik.index'))
+        ->assertSessionHas('success');
+
+    $this->assertTrue(DB::table('pertemuan')
+        ->where('id', $fixture['pertemuan']->id)
+        ->whereDate('tanggal', '2027-01-01')
+        ->exists());
+});
+
+test('format tanggal yang tidak valid tetap ditolak', function () {
+    $fixture = createUbahTanggalFixture();
+
+    $this->actingAs($fixture['admin'])
+        ->post(route('absensi-sik.pertemuan.ubah-tanggal', $fixture['pertemuan']), [
+            'tanggal_baru' => 'bukan-tanggal',
             'konfirmasi' => '1',
         ])
         ->assertSessionHasErrors('tanggal_baru');
@@ -230,5 +247,87 @@ test('perubahan tanggal tidak mengubah identitas kegiatan, kelompok, maupun stat
         'status' => 'Hadir',
         'anggota_periode_sik_id' => $fixture['absensi']->anggota_periode_sik_id,
         'pertemuan_id' => $fixture['pertemuan']->id,
+    ]);
+});
+
+test('input tanggal pertemuan tidak lagi dikunci dengan atribut min dan max', function () {
+    $fixture = createUbahTanggalFixture();
+    $fixture['periode']->update([
+        'tanggal_mulai' => '2026-11-01',
+        'tanggal_selesai' => '2026-11-01',
+    ]);
+    $fixture['pertemuan']->update(['tanggal' => '2026-11-20']);
+
+    $this->actingAs($fixture['admin'])
+        ->get(route('absensi-sik.index'))
+        ->assertOk()
+        ->assertDontSee('min="2026-11-01"', false)
+        ->assertDontSee('max="2026-11-01"', false)
+        ->assertSee('name="tanggal_baru"', false);
+});
+
+test('instruktur dapat memilih tanggal pertemuan di luar rentang periode maupun riwayat', function () {
+    $fixture = createUbahTanggalFixture();
+    $fixture['periode']->update([
+        'tanggal_mulai' => '2026-11-01',
+        'tanggal_selesai' => '2026-11-01',
+    ]);
+    $fixture['pertemuan']->update(['tanggal' => '2026-11-20']);
+
+    $pertemuanKedua = Pertemuan::query()->create([
+        'kegiatan_id' => $fixture['kegiatan']->id,
+        'pertemuan_ke' => 2,
+        'tanggal' => '2026-11-27',
+        'status' => 'Terlaksana',
+        'kelompok_host_id' => $fixture['kelompok']->id,
+    ]);
+    AbsensiSik::query()->create([
+        'anggota_periode_sik_id' => $fixture['anggota']->id,
+        'pertemuan_id' => $pertemuanKedua->id,
+        'metode_absensi' => 'Manual',
+        'status' => 'Hadir',
+        'dicatat_oleh' => $fixture['instruktur']->id,
+    ]);
+
+    $this->actingAs($fixture['instrukturUser'])
+        ->post(route('absensi-sik.pertemuan.ubah-tanggal', $fixture['pertemuan']), [
+            'tanggal_baru' => '2027-03-05',
+            'konfirmasi' => '1',
+        ])
+        ->assertRedirect(route('absensi-sik.index'))
+        ->assertSessionHas('success');
+
+    $this->assertTrue(DB::table('pertemuan')
+        ->where('id', $fixture['pertemuan']->id)
+        ->where('status', 'Terjadwal')
+        ->whereDate('tanggal', '2027-03-05')
+        ->exists());
+    $this->assertDatabaseHas('absensi_sik', [
+        'id' => $fixture['absensi']->id,
+        'pertemuan_id' => $fixture['pertemuan']->id,
+        'status' => 'Hadir',
+    ]);
+});
+
+test('mengubah tanggal pertemuan tidak mengubah status pertemuan maupun absensi terkait', function () {
+    $fixture = createUbahTanggalFixture();
+    $fixture['pertemuan']->update(['status' => 'Terlaksana']);
+
+    $this->actingAs($fixture['instrukturUser'])
+        ->post(route('absensi-sik.pertemuan.ubah-tanggal', $fixture['pertemuan']), [
+            'tanggal_baru' => '2026-12-31',
+            'konfirmasi' => '1',
+        ])
+        ->assertRedirect(route('absensi-sik.index'))
+        ->assertSessionHas('success');
+
+    $pertemuan = Pertemuan::query()->findOrFail($fixture['pertemuan']->id);
+    expect($pertemuan->status)->toBe('Terlaksana')
+        ->and($pertemuan->tanggal->toDateString())->toBe('2026-12-31');
+
+    $this->assertDatabaseHas('absensi_sik', [
+        'id' => $fixture['absensi']->id,
+        'pertemuan_id' => $fixture['pertemuan']->id,
+        'status' => 'Hadir',
     ]);
 });
