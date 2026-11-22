@@ -22,17 +22,83 @@
 
 .attendance-filter {
     display: grid;
-    grid-template-columns: minmax(220px, 1fr) minmax(190px, 260px) auto auto;
-    gap: .7rem;
-    padding: .85rem;
+    grid-template-columns: minmax(210px, 1.2fr) minmax(180px, 1fr) minmax(220px, 1.15fr) auto;
+    align-items: end;
+    gap: 1rem;
+    padding: 1rem;
     border-radius: 14px;
 }
 
+.attendance-filter-field {
+    min-width: 0;
+    max-width: 100%;
+}
+
 .attendance-filter .form-control,
-.attendance-filter .form-select {
-    min-height: 43px;
+.attendance-filter .form-select,
+.attendance-filter .kelompok-multiselect-toggle {
+    min-height: 42px;
     border-color: #e8dddd;
     border-radius: 9px;
+}
+
+.attendance-filter .form-text {
+    margin-top: .3rem;
+    color: #8a8182;
+    font-size: .7rem;
+}
+
+.attendance-filter-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: .5rem;
+    min-height: 42px;
+}
+
+.attendance-filter-actions .btn {
+    min-height: 42px;
+    padding-inline: 1rem;
+    border-radius: 9px;
+    font-size: .86rem;
+    font-weight: 700;
+}
+
+.attendance-filter-actions .btn-primary {
+    border-color: var(--attendance-maroon);
+    background: var(--attendance-maroon);
+}
+
+.attendance-filter-actions .btn-primary:hover,
+.attendance-filter-actions .btn-primary:focus {
+    border-color: #5e090d;
+    background: #5e090d;
+}
+
+@media (max-width: 1180px) {
+    .attendance-filter {
+        grid-template-columns: minmax(200px, 1.2fr) minmax(180px, 1fr) minmax(210px, 1.1fr);
+    }
+
+    .attendance-filter-actions {
+        grid-column: 1 / -1;
+        justify-content: flex-end;
+    }
+}
+
+@media (max-width: 760px) {
+    .attendance-filter {
+        grid-template-columns: 1fr;
+        gap: .85rem;
+        padding: .85rem;
+    }
+
+    .attendance-filter-actions {
+        grid-column: auto;
+        justify-content: stretch;
+    }
+
+    .attendance-filter-actions .btn { flex: 1 1 0; }
 }
 
 .attendance-manual,
@@ -96,6 +162,21 @@
 .attendance-edit-cell { min-width: 240px; }
 .attendance-edit-form > .d-flex .form-select { min-width: 130px; }
 
+.attendance-date-change { max-width: 230px; }
+
+.attendance-date-change > summary {
+    width: fit-content;
+    color: var(--attendance-maroon);
+    cursor: pointer;
+    font-size: .72rem;
+    font-weight: 700;
+    list-style: none;
+}
+
+.attendance-date-change > summary::-webkit-details-marker { display: none; }
+
+.attendance-date-change form { max-width: 230px; }
+
 .attendance-edit-details { margin-top: .4rem; }
 
 .attendance-edit-details > summary {
@@ -109,8 +190,6 @@
 
 @media (max-width: 760px) {
     .sik-attendance-page { padding-inline: .8rem !important; }
-    .attendance-filter { grid-template-columns: 1fr 1fr; }
-    .attendance-filter .form-control { grid-column: 1 / -1; }
     .attendance-manual > summary { align-items: flex-start; }
     .attendance-summary-note { display: none; }
 }

@@ -7,7 +7,7 @@
         <div>
             <span class="sertifikat-eyebrow">SIKVERSE · SERTIFIKAT KELULUSAN</span>
             <h1 class="page-title">Sertifikat SIK</h1>
-            <p>Kelola berkas sertifikat untuk peserta yang telah dinyatakan lulus dan memenuhi ambang kehadiran.</p>
+            <p>Kelola berkas sertifikat untuk peserta dengan keputusan Admin terbaru Lulus.</p>
         </div>
 
         <a class="btn btn-primary" href="{{ route('sertifikat-sik.create') }}">
@@ -49,16 +49,10 @@
                                        rel="noopener">
                                         Lihat
                                     </a>
-                                    <a class="btn btn-sm btn-warning" href="{{ route('sertifikat-sik.edit', $item) }}">
-                                        Edit
+                                    <a class="btn btn-sm btn-outline-secondary"
+                                       href="{{ route('sertifikat-sik.download', $item) }}">
+                                        Unduh
                                     </a>
-                                    <form action="{{ route('sertifikat-sik.destroy', $item) }}"
-                                          method="POST"
-                                          onsubmit="return confirm('Hapus sertifikat ini?')">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button class="btn btn-sm btn-danger" type="submit">Hapus</button>
-                                    </form>
                                 </div>
                             </td>
                         </tr>

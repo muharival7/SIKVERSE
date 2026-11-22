@@ -9,18 +9,10 @@ return [
         ),
     ],
     'attendance' => [
-        // Legacy fixed-count settings. Dipertahankan untuk kompatibilitas
-        // mundur pada fitur yang masih menggunakan jumlah maksimal pertemuan
-        // (misalnya validasi formulir pertemuan). Sumber kebenaran tunggal
-        // untuk ambang kehadiran adalah minimum_percentage di bawah ini.
-        // JANGAN menggunakan minimum_present atau meeting_count untuk
-        // perhitungan kelayakan kelulusan atau sertifikat.
-        'meeting_count' => 16,
-        'minimum_present' => 14,
-
-        // Single source of truth for the attendance threshold. The service
-        // compares Hadir * 1000 >= Terlaksana * (minimum_percentage * 10).
-        'minimum_percentage' => 87.5,
+        // Keputusan pengguna: ambang dihitung dari pertemuan yang benar-benar
+        // Terlaksana. Pertemuan Dibatalkan/Terjadwal tidak menjadi penyebut,
+        // dan tidak ada jumlah pertemuan tetap yang dijadikan kebijakan.
+        'minimum_percentage' => 85,
     ],
     'bootstrap_admin' => [
         'name' => env('SIK_BOOTSTRAP_ADMIN_NAME', 'Admin SIK'),

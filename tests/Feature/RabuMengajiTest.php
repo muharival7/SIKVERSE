@@ -199,7 +199,7 @@ test('rabu mengaji detail shows identity riwayat and rekap', function () {
         ->assertSee('18/11/2026')
         ->assertSee('Riwayat pertemuan')
         ->assertSee('Total Hadir')
-        ->assertSee('87,5%')
+        ->assertSee('85,0%')
         ->assertSee('Memenuhi');
 });
 

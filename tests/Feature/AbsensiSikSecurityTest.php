@@ -177,14 +177,19 @@ test('a valid substitute instructor can record attendance for a target group the
     ]);
 });
 
-test('an instructor without an assigned role cannot record attendance', function () {
+test('an active instructor from an unrelated group can record attendance on any active group', function () {
     $fixture = createAbsensiSecurityFixture();
 
     $this->actingAs($fixture['unrelatedUser'])
         ->post(route('absensi-sik.store'), absensiSecurityPayload($fixture))
-        ->assertForbidden();
+        ->assertRedirect(route('absensi-sik.index'))
+        ->assertSessionHasNoErrors();
 
-    $this->assertDatabaseCount('absensi_sik', 0);
+    $this->assertDatabaseHas('absensi_sik', [
+        'anggota_periode_sik_id' => $fixture['anggota']->id,
+        'pertemuan_id' => $fixture['pertemuan']->id,
+        'dicatat_oleh' => $fixture['unrelatedInstruktur']->id,
+    ]);
 });
 
 test('a santri from a different group cannot have attendance recorded', function () {

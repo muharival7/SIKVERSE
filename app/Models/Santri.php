@@ -52,12 +52,16 @@ class Santri extends Model
 
     public function anggotaPeriode(): HasMany
     {
-        return $this->hasMany(AnggotaPeriodeSik::class, 'santri_id');
+        return $this->hasMany(AnggotaPeriodeSik::class, 'santri_id')
+            ->orderByDesc('tanggal_masuk')
+            ->orderByDesc('id');
     }
 
     public function anggotaPeriodeTerbaru(): HasOne
     {
-        return $this->hasOne(AnggotaPeriodeSik::class, 'santri_id')->latestOfMany();
+        return $this->hasOne(AnggotaPeriodeSik::class, 'santri_id')
+            ->orderByDesc('tanggal_masuk')
+            ->orderByDesc('id');
     }
 
     public function kelulusan(): HasOne

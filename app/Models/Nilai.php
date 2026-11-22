@@ -12,6 +12,8 @@ class Nilai extends Model
     protected $fillable = [
         'santri_id',
         'mata_pelajaran_id',
+        'kegiatan_id',
+        'jenis_nilai',
         'infrastruktur_sik_id',
         'semester',
         'tahun_ajaran',
@@ -27,6 +29,11 @@ class Nilai extends Model
     public function mataPelajaran(): BelongsTo
     {
         return $this->belongsTo(MataPelajaran::class);
+    }
+
+    public function kegiatan(): BelongsTo
+    {
+        return $this->belongsTo(Kegiatan::class, 'kegiatan_id');
     }
 
     public function infrastrukturSik(): BelongsTo

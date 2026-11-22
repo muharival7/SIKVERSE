@@ -98,7 +98,7 @@ test('an admin can create a staff account with a matching role profile', functio
     ]);
 });
 
-test('an admin can deactivate an instructor and the instructor loses role access', function () {
+test('an admin can deactivate an instructor and the instructor retains read-only access', function () {
     $admin = User::factory()->create(['role' => UserRole::Admin]);
     $instructor = User::factory()->create(['role' => UserRole::InfrastrukturSik]);
     InfrastrukturSik::create([
@@ -117,8 +117,24 @@ test('an admin can deactivate an instructor and the instructor loses role access
 
     $this->actingAs($instructor)
         ->get(route('dashboard.infrastruktur_sik'))
-        ->assertForbidden();
+        ->assertOk();
 });
+
+test('inactive instructors cannot use write endpoints', function (string $routeName) {
+    $instructor = User::factory()->create(['role' => UserRole::InfrastrukturSik]);
+    InfrastrukturSik::create([
+        'user_id' => $instructor->id,
+        'nama' => $instructor->name,
+        'status' => 'Tidak Aktif',
+    ]);
+
+    $this->actingAs($instructor)
+        ->post(route($routeName), [])
+        ->assertForbidden();
+})->with([
+    'absensi' => ['absensi-sik.store'],
+    'nilai' => ['nilai.store'],
+]);
 
 test('non-admin users cannot manage staff accounts', function (UserRole $role) {
     $user = User::factory()->create(['role' => $role]);
@@ -130,6 +146,21 @@ test('non-admin users cannot manage staff accounts', function (UserRole $role) {
     'santri' => [UserRole::Santri],
     'infrastruktur SIK' => [UserRole::InfrastrukturSik],
     'Ka-Lab Mutu' => [UserRole::KaLabMutu],
+]);
+
+test('non-admin users cannot create staff or santri accounts', function (UserRole $role, string $routeName) {
+    $user = User::factory()->create(['role' => $role]);
+
+    $this->actingAs($user)
+        ->post(route($routeName), [])
+        ->assertForbidden();
+})->with([
+    'santri creates dosen' => [UserRole::Santri, 'users.store'],
+    'santri creates santri' => [UserRole::Santri, 'santris.store'],
+    'santri imports santri' => [UserRole::Santri, 'santris.import.preview'],
+    'instruktur creates dosen' => [UserRole::InfrastrukturSik, 'users.store'],
+    'instruktur creates santri' => [UserRole::InfrastrukturSik, 'santris.store'],
+    'ka-lab creates santri' => [UserRole::KaLabMutu, 'santris.store'],
 ]);
 
 test('data dosen renders kelompok from the instructor relation without using program studi', function () {

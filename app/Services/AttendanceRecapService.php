@@ -12,14 +12,17 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Satu sumber perhitungan kehadiran dan evaluasi kelulusan SIK.
+ * Satu sumber perhitungan kehadiran dan informasi syarat ujian SIK.
  *
  * Semua angka dihitung dari pertemuan berstatus Terlaksana dan absensi_sik.
  * Rekap_kehadiran_sik hanya dipakai sebagai cache penulisan, bukan sebagai
- * sumber angka saat data ditampilkan.
+ * sumber angka saat data ditampilkan. Status kelulusan tidak diturunkan dari
+ * angka kehadiran, melainkan dari keputusan Admin yang tercatat.
  */
 class AttendanceRecapService
 {
+    public function __construct(private readonly GraduationDecisionService $graduationDecisionService) {}
+
     public const STATUS_NO_MEETINGS = 'Belum Ada Pertemuan Terlaksana';
 
     public const STATUS_NO_ATTENDANCE = 'Belum Ada Data Kehadiran';
@@ -35,6 +38,8 @@ class AttendanceRecapService
     public const GRADUATION_UNMET = 'Belum memenuhi ambang kehadiran';
 
     public const GRADUATION_MET = 'Memenuhi ambang kehadiran';
+
+    public const GRADUATION_PENDING = 'Belum Ditentukan';
 
     public const GRADUATION_PASSED = 'Lulus';
 
@@ -328,7 +333,7 @@ class AttendanceRecapService
         }
 
         $minimumPromille = (int) round(
-            (float) config('sik.attendance.minimum_percentage', 87.5) * 10
+            (float) config('sik.attendance.minimum_percentage', 85) * 10
         );
 
         return $jumlahHadir * 1000 >= $totalPertemuanTerlaksana * $minimumPromille;
@@ -336,7 +341,7 @@ class AttendanceRecapService
 
     public function minimumPercentage(): float
     {
-        return (float) config('sik.attendance.minimum_percentage', 87.5);
+        return (float) config('sik.attendance.minimum_percentage', 85);
     }
 
     /**
@@ -355,7 +360,7 @@ class AttendanceRecapService
     }
 
     /**
-     * Pesan kegagalan ambang yang dipakai oleh validasi kelulusan dan sertifikat.
+     * Pesan kegagalan ambang yang dipakai oleh syarat mengikuti ujian.
      *
      * @param  array<string, mixed>  $metric
      */
@@ -364,14 +369,14 @@ class AttendanceRecapService
         $minimum = $this->formatPercentage($this->minimumPercentage()).'%';
 
         if (! (bool) $metric['tersedia']) {
-            return 'Belum ada pertemuan Terlaksana yang dapat dijadikan dasar evaluasi; ambang '.$minimum.'.';
+            return 'Belum memenuhi ambang kehadiran untuk ujian; belum ada pertemuan Terlaksana yang dapat dijadikan dasar evaluasi; ambang '.$minimum.'.';
         }
 
         if ($metric['status'] === self::STATUS_NO_ATTENDANCE) {
-            return 'Belum ada catatan kehadiran pada pertemuan Terlaksana; ambang '.$minimum.'.';
+            return 'Belum memenuhi ambang kehadiran untuk ujian; belum ada catatan kehadiran pada pertemuan Terlaksana; ambang '.$minimum.'.';
         }
 
-        return 'Kehadiran '.$this->formatPercentage($metric['persentase'] === null ? null : (float) $metric['persentase']).'% dari pertemuan Terlaksana; ambang '.$minimum.'.';
+        return 'Belum memenuhi ambang kehadiran untuk ujian; kehadiran '.$this->formatPercentage($metric['persentase'] === null ? null : (float) $metric['persentase']).'% dari pertemuan Terlaksana; ambang '.$minimum.'.';
     }
 
     /**
@@ -447,7 +452,8 @@ class AttendanceRecapService
     }
 
     /**
-     * Daftar anggota aktif yang memenuhi ambang kehadiran untuk kelulusan.
+     * Daftar anggota aktif yang memenuhi ambang kehadiran sebagai syarat
+     * mengikuti ujian. Hasil ini tidak menentukan status kelulusan.
      *
      * @return Collection<int, int>
      */
@@ -463,17 +469,21 @@ class AttendanceRecapService
     /**
      * Evaluasi kelulusan yang dipakai bersama oleh admin, santri, dan Ka-Lab Mutu.
      *
-     * Catatan kelulusan yang tersimpan tidak diubah; status yang ditampilkan
-     * selalu mengikuti ambang kehadiran yang dihitung ulang dari absensi.
+     * Status kelulusan mengikuti keputusan Admin terbaru yang tercatat. Bila
+     * belum ada keputusan, catatan lama dibekukan apa adanya. Kehadiran hanya
+     * disajikan sebagai informasi syarat mengikuti ujian dan tidak mengubah
+     * keputusan kelulusan.
      *
      * @return array{
      *     code: string,
      *     label: string,
      *     alasan: string,
      *     catatan_tersimpan: string|null,
+     *     keputusan_admin: string|null,
      *     keterangan: string|null,
      *     metric: array<string, mixed>,
-     *     memenuhi_ambang: bool
+     *     memenuhi_ambang: bool,
+     *     syarat_ujian: array{memenuhi: bool, alasan: string}
      * }
      */
     public function graduationEvaluation(?KelulusanSik $kelulusan, ?AnggotaPeriodeSik $anggota = null): array
@@ -484,29 +494,34 @@ class AttendanceRecapService
             : $this->emptyMetric(0);
         $catatanTersimpan = $kelulusan?->status;
         $persentase = $this->formatPercentage($metric['persentase']);
+        $keputusanAdmin = $kelulusan === null
+            ? null
+            : $this->graduationDecisionService->latestDecision((int) $kelulusan->id);
+        $statusKeputusan = $keputusanAdmin?->status_sesudahnya ?? $catatanTersimpan;
 
         if ($kelulusan === null) {
             $code = self::GRADUATION_NO_RECORD;
-        } elseif (! $metric['tersedia']) {
-            $code = self::GRADUATION_NO_MEETINGS;
-        } elseif (! $metric['memenuhi']) {
-            $code = self::GRADUATION_UNMET;
-        } elseif ($catatanTersimpan === 'Lulus') {
+        } elseif ($statusKeputusan === 'Lulus') {
             $code = self::GRADUATION_PASSED;
-        } elseif ($catatanTersimpan === 'Tidak Lulus') {
+        } elseif ($statusKeputusan === 'Tidak Lulus') {
             $code = self::GRADUATION_FAILED;
         } else {
-            $code = self::GRADUATION_MET;
+            $code = self::GRADUATION_PENDING;
         }
 
+        $syaratUjian = (bool) $metric['memenuhi']
+            ? 'Kelayakan ujian: kehadiran '.$persentase.' memenuhi ambang '.$this->formatPercentage($this->minimumPercentage()).'%.'
+            : 'Kelayakan ujian: '.$this->thresholdRequirementMessage($metric);
+        $sumberKeputusan = $keputusanAdmin === null
+            ? 'Catatan kelulusan lama'
+            : 'Keputusan Admin terbaru';
+
         $alasan = match ($code) {
-            self::GRADUATION_NO_RECORD => 'Belum ada catatan evaluasi kelulusan untuk peserta ini.',
-            self::GRADUATION_NO_MEETINGS => $this->thresholdRequirementMessage($metric),
-            self::GRADUATION_UNMET => $this->thresholdRequirementMessage($metric),
-            self::GRADUATION_MET => 'Kehadiran '.$persentase.' memenuhi ambang '.$this->formatPercentage($this->minimumPercentage()).'%; status kelulusan belum ditetapkan.',
-            self::GRADUATION_PASSED => 'Kehadiran '.$persentase.' memenuhi ambang '.$this->formatPercentage($this->minimumPercentage()).'%; status Lulus telah dicatat.',
-            self::GRADUATION_FAILED => 'Status Tidak Lulus telah dicatat pada catatan evaluasi.',
-            default => 'Status evaluasi belum dapat ditentukan.',
+            self::GRADUATION_NO_RECORD => 'Belum ada catatan evaluasi kelulusan untuk peserta ini. '.$syaratUjian,
+            self::GRADUATION_PENDING => 'Status kelulusan belum ditetapkan oleh Admin. '.$syaratUjian,
+            self::GRADUATION_PASSED => $sumberKeputusan.': Lulus. '.$syaratUjian,
+            self::GRADUATION_FAILED => $sumberKeputusan.': Tidak Lulus. '.$syaratUjian,
+            default => 'Status evaluasi belum dapat ditentukan. '.$syaratUjian,
         };
 
         return [
@@ -514,9 +529,14 @@ class AttendanceRecapService
             'label' => $code,
             'alasan' => $alasan,
             'catatan_tersimpan' => $catatanTersimpan,
+            'keputusan_admin' => $keputusanAdmin?->status_sesudahnya,
             'keterangan' => $kelulusan?->keterangan,
             'metric' => $metric,
             'memenuhi_ambang' => (bool) $metric['memenuhi'],
+            'syarat_ujian' => [
+                'memenuhi' => (bool) $metric['memenuhi'],
+                'alasan' => $syaratUjian,
+            ],
         ];
     }
 
@@ -555,7 +575,8 @@ class AttendanceRecapService
 
     /**
      * Ringkasan kelulusan per tahun dengan status turunan yang sama seperti
-     * yang dipakai dashboard admin dan dashboard santri.
+     * yang dipakai dashboard admin dan dashboard santri. Rincian kehadiran
+     * tetap ditampilkan, tetapi tidak menentukan status lulus/tidak lulus.
      *
      * @return Collection<int, array<string, int>>
      */
@@ -563,9 +584,7 @@ class AttendanceRecapService
     {
         $kodeStatus = [
             self::GRADUATION_NO_RECORD,
-            self::GRADUATION_NO_MEETINGS,
-            self::GRADUATION_UNMET,
-            self::GRADUATION_MET,
+            self::GRADUATION_PENDING,
             self::GRADUATION_PASSED,
             self::GRADUATION_FAILED,
         ];
@@ -592,16 +611,21 @@ class AttendanceRecapService
                         self::GRADUATION_PASSED => 'lulus',
                         self::GRADUATION_FAILED => 'tidak_lulus',
                         self::GRADUATION_NO_RECORD => 'belum_ada_catatan_evaluasi',
-                        self::GRADUATION_NO_MEETINGS => 'belum_ada_pertemuan_terlaksana',
-                        self::GRADUATION_UNMET => 'belum_memenuhi_ambang',
-                        self::GRADUATION_MET => 'memenuhi_ambang',
+                        self::GRADUATION_PENDING => 'belum_ditetapkan',
                     }] = $count;
                 }
 
-                $summary['belum_ditetapkan'] = $summary['belum_ada_catatan_evaluasi']
-                    + $summary['belum_ada_pertemuan_terlaksana']
-                    + $summary['belum_memenuhi_ambang']
-                    + $summary['memenuhi_ambang'];
+                $pendingRows = $rows->filter(fn (array $row): bool => $row['evaluasi']['code'] === self::GRADUATION_PENDING);
+                $summary['belum_ada_pertemuan_terlaksana'] = $pendingRows
+                    ->filter(fn (array $row): bool => ! (bool) $row['evaluasi']['metric']['tersedia'])
+                    ->count();
+                $summary['belum_memenuhi_ambang'] = $pendingRows
+                    ->filter(fn (array $row): bool => (bool) $row['evaluasi']['metric']['tersedia']
+                        && ! (bool) $row['evaluasi']['memenuhi_ambang'])
+                    ->count();
+                $summary['memenuhi_ambang'] = $pendingRows
+                    ->filter(fn (array $row): bool => (bool) $row['evaluasi']['memenuhi_ambang'])
+                    ->count();
 
                 return $summary;
             })

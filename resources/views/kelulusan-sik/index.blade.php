@@ -2,11 +2,11 @@
 
 @section('content')
 <div class="container py-4 py-lg-5">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4"><div><h1 class="page-title h3 mb-1">Kelulusan SIK</h1><p class="text-muted mb-0">Kelola hasil kelulusan peserta per periode. Status evaluasi mengikuti ambang kehadiran yang dihitung dari pertemuan Terlaksana.</p></div><a class="btn btn-primary" href="{{ route('kelulusan-sik.create') }}">+ Catat Kelulusan</a></div>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4"><div><h1 class="page-title h3 mb-1">Kelulusan SIK</h1><p class="text-muted mb-0">Kelola hasil kelulusan peserta per periode. Status kelulusan mengikuti keputusan Admin terbaru; kehadiran dari pertemuan Terlaksana hanya menjadi syarat mengikuti ujian.</p></div><a class="btn btn-primary" href="{{ route('kelulusan-sik.create') }}">+ Catat Kelulusan</a></div>
     @if (session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
     @if (session('error'))<div class="alert alert-danger">{{ session('error') }}</div>@endif
     <div class="card shadow-sm"><div class="table-responsive">
-        <table class="table table-bordered table-hover align-middle mb-0"><thead><tr><th>No</th><th>Nomor Induk</th><th>Santri</th><th>Periode</th><th>Kelompok</th><th>Kehadiran</th><th>Status Evaluasi</th><th>Tanggal</th><th>Alasan Evaluasi</th><th>Aksi</th></tr></thead>
+        <table class="table table-bordered table-hover align-middle mb-0"><thead><tr><th>No</th><th>Nomor Induk</th><th>Santri</th><th>Periode</th><th>Kelompok</th><th>Kehadiran</th><th>Status Kelulusan</th><th>Tanggal</th><th>Keterangan Status</th><th>Aksi</th></tr></thead>
             <tbody>@forelse ($kelulusan as $item)
                 <tr>
                     <td>{{ $kelulusan->firstItem() + $loop->index }}</td>

@@ -97,14 +97,14 @@
                     </div>
                 </div>
 
-                <p class="admin-certificate-description">Kelola sertifikat santri yang sudah dinyatakan lulus dan memenuhi ambang kehadiran.</p>
+                <p class="admin-certificate-description">Kelola sertifikat santri berdasarkan keputusan Admin terbaru, bukan ambang kehadiran.</p>
 
                 <div class="admin-certificate-callout">
                     <div class="admin-certificate-count">
                         <strong class="admin-certificate-count-value">{{ number_format($adminStats['mahasiswaLulus']) }}</strong>
-                        <span class="admin-certificate-count-label">santri memenuhi syarat kelulusan</span>
+                        <span class="admin-certificate-count-label">santri dengan keputusan Lulus</span>
                     </div>
-                    <p class="admin-certificate-note">Jumlah ini dihitung ulang dari pertemuan Terlaksana dan ambang {{ $adminStats['minimumPercentageDisplay'] }}.</p>
+                    <p class="admin-certificate-note">Jumlah ini mengikuti keputusan Admin terbaru. Ambang {{ $adminStats['minimumPercentageDisplay'] }} hanya syarat mengikuti ujian.</p>
                 </div>
 
                 <a class="sd-button sd-button-primary admin-certificate-action" href="{{ route('sertifikat-sik.index') }}">

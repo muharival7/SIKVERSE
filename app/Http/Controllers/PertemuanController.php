@@ -7,7 +7,9 @@ use App\Models\Kegiatan;
 use App\Models\Kelompok;
 use App\Models\PeriodeSik;
 use App\Models\Pertemuan;
+use App\Models\User;
 use App\Services\AttendanceAuthorizationService;
+use App\Services\AttendanceHistoryService;
 use App\Services\AttendanceRecapService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
@@ -21,7 +23,8 @@ class PertemuanController extends Controller
 {
     public function __construct(
         private readonly AttendanceRecapService $attendanceRecapService,
-        private readonly AttendanceAuthorizationService $attendanceAuthorizationService
+        private readonly AttendanceAuthorizationService $attendanceAuthorizationService,
+        private readonly AttendanceHistoryService $attendanceHistoryService
     ) {}
 
     public function index(): View
@@ -81,9 +84,43 @@ class PertemuanController extends Controller
         }
 
         $kegiatanSebelumnya = (int) $pertemuan->kegiatan_id;
+        $statusSebelumnya = (string) $pertemuan->status;
+        $tanggalSebelumnya = $pertemuan->tanggal->toDateString();
+        $actor = $request->user() instanceof User ? $request->user() : null;
+        $instruktur = $actor?->infrastrukturSik;
+        if (! $instruktur instanceof InfrastrukturSik) {
+            $instruktur = null;
+        }
 
-        DB::transaction(function () use ($pertemuan, $validated, $kegiatanSebelumnya): void {
+        DB::transaction(function () use (
+            $pertemuan,
+            $validated,
+            $kegiatanSebelumnya,
+            $statusSebelumnya,
+            $tanggalSebelumnya,
+            $actor,
+            $instruktur
+        ): void {
             $pertemuan->update($validated);
+
+            $this->attendanceHistoryService->recordPertemuanStatusChange(
+                (int) $pertemuan->id,
+                $statusSebelumnya,
+                (string) $pertemuan->status,
+                $actor,
+                $instruktur,
+                'Status pertemuan diubah melalui formulir pertemuan.'
+            );
+
+            $this->attendanceHistoryService->recordPertemuanDateChange(
+                (int) $pertemuan->id,
+                $tanggalSebelumnya,
+                $pertemuan->tanggal->toDateString(),
+                $actor,
+                $instruktur,
+                'Tanggal pertemuan diubah melalui formulir pertemuan.'
+            );
+
             $this->attendanceRecapService->syncForPertemuan($pertemuan, $kegiatanSebelumnya);
         });
 
@@ -175,7 +212,6 @@ class PertemuanController extends Controller
                 'required',
                 'integer',
                 'min:1',
-                'max:'.config('sik.attendance.meeting_count', 16),
                 Rule::unique('pertemuan', 'pertemuan_ke')
                     ->where('kegiatan_id', $request->input('kegiatan_id'))
                     ->ignore($pertemuan?->id),

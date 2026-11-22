@@ -203,7 +203,7 @@ class RekapKehadiranSikController extends Controller
 
     /**
      * Menampilkan laporan SIK untuk Ka-Lab Mutu. Seluruh status kelulusan
-     * berasal dari evaluasi AttendanceRecapService, bukan dari catatan lama.
+     * berasal dari keputusan Admin terbaru; kehadiran hanya informasi ujian.
      */
     public function laporan(): View
     {

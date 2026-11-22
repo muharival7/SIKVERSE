@@ -6,17 +6,19 @@ use App\Enums\UserRole;
 use App\Models\AbsensiSik;
 use App\Models\AnggotaPeriodeSik;
 use App\Models\InfrastrukturSik;
-use App\Models\Kegiatan;
-use App\Models\Kelompok;
+use App\Models\PeriodeSik;
 use App\Models\Pertemuan;
 use App\Models\RekapKehadiranSik;
 use App\Models\RiwayatAbsensi;
 use App\Models\User;
 use App\Services\AttendanceAuthorizationService;
+use App\Services\AttendanceHistoryService;
 use App\Services\AttendanceRecapService;
+use App\Services\InstructorKelompokService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -26,99 +28,132 @@ class AbsensiSikController extends Controller
 {
     public function __construct(
         private readonly AttendanceRecapService $attendanceRecapService,
-        private readonly AttendanceAuthorizationService $attendanceAuthorizationService
+        private readonly AttendanceAuthorizationService $attendanceAuthorizationService,
+        private readonly InstructorKelompokService $instructorKelompokService,
+        private readonly AttendanceHistoryService $attendanceHistoryService
     ) {}
 
     public function index(Request $request): View
     {
+        $filters = $request->validate([
+            'periode_sik_id' => ['nullable', 'integer', 'exists:periode_sik,id'],
+        ]);
+        $selectedPeriodeId = filled($filters['periode_sik_id'] ?? null)
+            ? (int) $filters['periode_sik_id']
+            : null;
+
         $isAdmin = $request->user()->role === UserRole::Admin;
         $instruktur = $isAdmin ? null : $request->user()->infrastrukturSik;
         abort_if(! $isAdmin && ! ($instruktur instanceof InfrastrukturSik), 403);
-        $visibleGroupIds = collect();
+
+        $periodes = PeriodeSik::query()
+            ->whereHas('kelompok', fn ($query) => $query->where('status', 'Aktif'))
+            ->orderByDesc('tahun')
+            ->orderBy('nama_periode')
+            ->get();
+
+        $availableGroups = $this->instructorKelompokService->activeKelompoks($selectedPeriodeId);
+        $selectedGroupIds = $this->instructorKelompokService->resolveSelectedGroupIds(
+            $request->query('kelompok_id', []),
+            $availableGroups->pluck('id')
+        );
+
+        $scopeActiveGroup = function ($query) use ($selectedPeriodeId): void {
+            $query->where('status', 'Aktif');
+
+            if ($selectedPeriodeId !== null) {
+                $query->where('periode_sik_id', $selectedPeriodeId);
+            }
+        };
 
         $absensiQuery = AbsensiSik::with([
             'pertemuan.kegiatan.periode',
+            'pertemuan.kegiatan.kelompok.periode',
+            'pertemuan.kelompokHost.periode',
             'anggotaPeriode.periode',
-            'anggotaPeriode.kelompok',
+            'anggotaPeriode.kelompok.periode',
             'anggotaPeriode.santri',
-        ])->latest();
+        ])
+            ->whereHas('anggotaPeriode.kelompok', $scopeActiveGroup)
+            ->latest();
 
-        $pertemuanQuery = Pertemuan::with(['kegiatan.periode', 'kelompokHost'])
+        if ($selectedPeriodeId !== null) {
+            $absensiQuery->whereHas(
+                'anggotaPeriode',
+                fn ($query) => $query->where('periode_sik_id', $selectedPeriodeId)
+            );
+        }
+
+        $pertemuanQuery = Pertemuan::with(['kegiatan.periode', 'kegiatan.kelompok', 'kelompokHost'])
             ->where('status', '!=', 'Dibatalkan')
+            ->where(function ($query) use ($scopeActiveGroup): void {
+                $query->whereHas('kelompokHost', $scopeActiveGroup)
+                    ->orWhereHas('kegiatan.kelompok', $scopeActiveGroup);
+            })
             ->orderByDesc('tanggal');
 
-        $anggotaQuery = AnggotaPeriodeSik::with(['santri', 'kelompok', 'periode'])
+        if ($selectedPeriodeId !== null) {
+            $pertemuanQuery->where(function ($query) use ($selectedPeriodeId): void {
+                $query->whereHas(
+                    'kelompokHost',
+                    fn ($groupQuery) => $groupQuery->where('periode_sik_id', $selectedPeriodeId)
+                )->orWhereHas(
+                    'kegiatan.kelompok',
+                    fn ($groupQuery) => $groupQuery->where('periode_sik_id', $selectedPeriodeId)
+                );
+            });
+        }
+
+        $anggotaQuery = AnggotaPeriodeSik::with(['santri', 'kelompok.periode', 'periode'])
             ->where('status', 'Aktif')
+            ->whereHas('kelompok', $scopeActiveGroup)
             ->orderBy('id');
 
-        if ($instruktur instanceof InfrastrukturSik) {
-            $groupIds = Kelompok::where('instruktur_id', $instruktur->id)->pluck('id');
-            $replacementGroupIds = Pertemuan::where('instruktur_pengganti_id', $instruktur->id)
-                ->whereNotNull('kelompok_host_id')
-                ->pluck('kelompok_host_id');
-            $visibleGroupIds = $groupIds->merge($replacementGroupIds)->unique()->values();
-
-            $absensiQuery->where(function ($query) use ($instruktur): void {
-                $query->whereHas(
-                    'anggotaPeriode.kelompok',
-                    fn ($groupQuery) => $groupQuery->where('instruktur_id', $instruktur->id)
-                )->orWhereHas('pertemuan', function ($meetingQuery) use ($instruktur): void {
-                    $meetingQuery->where('instruktur_pengganti_id', $instruktur->id)
-                        ->orWhereHas(
-                            'kelompokHost',
-                            fn ($groupQuery) => $groupQuery->where('instruktur_id', $instruktur->id)
-                        );
-                });
-            });
-
-            $pertemuanQuery->where(function ($query) use ($instruktur): void {
-                $query->where('instruktur_pengganti_id', $instruktur->id)
-                    ->orWhereHas(
-                        'kelompokHost',
-                        fn ($groupQuery) => $groupQuery->where('instruktur_id', $instruktur->id)
-                    )
-                    ->orWhereHas(
-                        'kegiatan.kelompok',
-                        fn ($groupQuery) => $groupQuery->where('instruktur_id', $instruktur->id)
-                    );
-            });
-
-            $anggotaQuery->whereIn('kelompok_id', $visibleGroupIds);
+        if ($selectedPeriodeId !== null) {
+            $anggotaQuery->where('periode_sik_id', $selectedPeriodeId);
         }
 
         $search = trim((string) $request->query('q', ''));
         if ($search !== '') {
-            $absensiQuery->whereHas('anggotaPeriode.santri', function ($query) use ($search): void {
+            $searchSantri = function ($query) use ($search): void {
                 $query->where('nama', 'like', '%'.$search.'%')
                     ->orWhere('nomor_induk', 'like', '%'.$search.'%');
+            };
+
+            $absensiQuery->whereHas('anggotaPeriode.santri', $searchSantri);
+            $anggotaQuery->whereHas('santri', $searchSantri);
+        }
+
+        if ($selectedGroupIds !== []) {
+            $absensiQuery->whereHas(
+                'anggotaPeriode.kelompok',
+                fn ($query) => $query->whereIn('id', $selectedGroupIds)
+            );
+            $anggotaQuery->whereIn('kelompok_id', $selectedGroupIds);
+            $pertemuanQuery->where(function ($query) use ($selectedGroupIds): void {
+                $query->whereIn('kelompok_host_id', $selectedGroupIds)
+                    ->orWhereHas(
+                        'kegiatan',
+                        fn ($kegiatanQuery) => $kegiatanQuery->whereIn('kelompok_id', $selectedGroupIds)
+                    );
             });
         }
 
-        $selectedGroup = $request->integer('kelompok_id') ?: null;
-        if ($selectedGroup !== null) {
-            if ($instruktur instanceof InfrastrukturSik) {
-                abort_unless($visibleGroupIds->contains($selectedGroup), 403);
-            }
-            $absensiQuery->whereHas(
-                'anggotaPeriode.kelompok',
-                fn ($query) => $query->whereKey($selectedGroup)
-            );
-        }
-
-        $groupsQuery = Kelompok::query()->orderBy('nama_kelompok');
-        if ($instruktur instanceof InfrastrukturSik) {
-            $groupsQuery->whereIn('id', $visibleGroupIds);
-        }
-
         $pertemuan = $pertemuanQuery->get();
+        $completablePertemuanIds = $isAdmin
+            ? $pertemuan->modelKeys()
+            : $this->completablePertemuanIds($pertemuan, $instruktur);
 
         return view('absensi-sik.index', [
             'absensi' => $absensiQuery->paginate(15)->withQueryString(),
             'pertemuan' => $pertemuan,
             'anggota' => $anggotaQuery->get(),
-            'kelompoks' => $groupsQuery->get(),
+            'kelompoks' => $availableGroups,
+            'periodes' => $periodes,
+            'selectedPeriodeId' => $selectedPeriodeId,
             'search' => $search,
-            'selectedGroup' => $selectedGroup,
+            'selectedGroupIds' => $selectedGroupIds,
+            'completablePertemuanIds' => $completablePertemuanIds,
             'isAdmin' => $isAdmin,
         ]);
     }
@@ -219,13 +254,15 @@ class AbsensiSikController extends Controller
         $statusSebelumnya = $absensiSik->status;
         $alasan = $validated['alasan_perubahan'] ?? null;
         unset($validated['alasan_perubahan']);
+        $actor = $request->user() instanceof User ? $request->user() : null;
 
         DB::transaction(function () use (
             $absensiSik,
             $validated,
             $statusSebelumnya,
             $alasan,
-            $instruktur
+            $instruktur,
+            $actor
         ): void {
             if ($statusSebelumnya !== $validated['status'] && $instruktur instanceof InfrastrukturSik) {
                 RiwayatAbsensi::create([
@@ -236,6 +273,16 @@ class AbsensiSikController extends Controller
                     'alasan_perubahan' => $alasan,
                 ]);
             }
+
+            $this->attendanceHistoryService->recordAbsensiStatusChange(
+                (int) $absensiSik->id,
+                (int) $absensiSik->pertemuan_id,
+                $statusSebelumnya,
+                $validated['status'],
+                $actor,
+                $instruktur,
+                $alasan
+            );
 
             $absensiSik->update($validated);
             $this->syncRekap($absensiSik->anggotaPeriode, $absensiSik->pertemuan);
@@ -260,8 +307,21 @@ class AbsensiSikController extends Controller
                 ->with('success', 'Pertemuan sudah berstatus Terlaksana.');
         }
 
-        DB::transaction(function () use ($pertemuan): void {
+        $statusSebelumnya = (string) $pertemuan->status;
+        $actor = $request->user() instanceof User ? $request->user() : null;
+
+        DB::transaction(function () use ($pertemuan, $statusSebelumnya, $instruktur, $actor): void {
             $pertemuan->update(['status' => 'Terlaksana']);
+
+            $this->attendanceHistoryService->recordPertemuanStatusChange(
+                (int) $pertemuan->id,
+                $statusSebelumnya,
+                'Terlaksana',
+                $actor,
+                $instruktur,
+                'Pertemuan ditandai selesai melalui modul absensi.'
+            );
+
             $this->attendanceRecapService->syncForPertemuan($pertemuan);
         });
 
@@ -272,7 +332,8 @@ class AbsensiSikController extends Controller
     /**
      * Ubah tanggal pertemuan tanpa menyentuh catatan absensi. Absensi tetap
      * terhubung lewat pertemuan_id, sehingga status, identitas santri, dan
-     * kegiatan/kelompok tidak berubah.
+     * kegiatan/kelompok tidak berubah. Izin ini terbuka untuk semua instruktur
+     * aktif; Tandai Selesai tetap dibatasi terpisah.
      */
     public function ubahTanggalPertemuan(Request $request, Pertemuan $pertemuan): RedirectResponse
     {
@@ -282,11 +343,18 @@ class AbsensiSikController extends Controller
         $validated = $request->validate([
             'tanggal_baru' => ['required', 'date', 'date_format:Y-m-d'],
             'konfirmasi' => ['nullable', 'accepted'],
+            'kelompok_id' => ['nullable', 'integer', 'exists:kelompok,id'],
+            'periode_sik_id' => ['nullable', 'integer', 'exists:periode_sik,id'],
         ]);
 
-        $pertemuan->load(['kegiatan.periode', 'kegiatan.kelompok', 'kelompokHost']);
+        $pertemuan->load(['kegiatan.periode', 'kegiatan.kelompok.periode', 'kelompokHost.periode']);
         $instruktur = $this->currentInstructor($request);
-        $this->attendanceAuthorizationService->authorizePertemuanDateChange($pertemuan, $instruktur);
+        $this->attendanceAuthorizationService->authorizePertemuanDateChange(
+            $pertemuan,
+            $instruktur,
+            filled($validated['kelompok_id'] ?? null) ? (int) $validated['kelompok_id'] : null,
+            filled($validated['periode_sik_id'] ?? null) ? (int) $validated['periode_sik_id'] : null
+        );
 
         if ($pertemuan->absensi()->exists() && ! $request->boolean('konfirmasi')) {
             throw ValidationException::withMessages([
@@ -301,19 +369,80 @@ class AbsensiSikController extends Controller
                 ->with('success', 'Tanggal pertemuan tidak berubah.');
         }
 
-        DB::transaction(function () use ($pertemuan, $validated): void {
+        $actor = $request->user() instanceof User ? $request->user() : null;
+
+        DB::transaction(function () use (
+            $pertemuan,
+            $validated,
+            $tanggalLama,
+            $instruktur,
+            $actor
+        ): void {
             // Hanya pertemuan yang diubah. Catatan absensi tetap terhubung
             // melalui pertemuan_id tanpa perubahan status atau identitas.
             $pertemuan->update(['tanggal' => $validated['tanggal_baru']]);
+
+            $this->attendanceHistoryService->recordPertemuanDateChange(
+                (int) $pertemuan->id,
+                $tanggalLama,
+                $validated['tanggal_baru'],
+                $actor,
+                $instruktur,
+                'Tanggal pertemuan diubah melalui modul absensi.'
+            );
         });
 
         return redirect()->route('absensi-sik.index')
             ->with('success', 'Tanggal pertemuan berhasil diubah dari '.$tanggalLama.' menjadi '.$validated['tanggal_baru'].'.');
     }
 
+    /**
+     * Daftar pertemuan yang boleh ditandai selesai. Izin Ubah Tanggal sengaja
+     * tidak memakai daftar ini karena terbuka untuk semua instruktur aktif.
+     *
+     * @param  Collection<int, Pertemuan>  $pertemuan
+     * @return array<int, int>
+     */
+    private function completablePertemuanIds(Collection $pertemuan, ?InfrastrukturSik $instruktur): array
+    {
+        if (! $instruktur instanceof InfrastrukturSik) {
+            return [];
+        }
+
+        $replacementGroupIds = Pertemuan::where('instruktur_pengganti_id', $instruktur->id)
+            ->whereNotNull('kelompok_host_id')
+            ->pluck('kelompok_host_id');
+        $manageableGroupIds = $this->instructorKelompokService->ownedGroupIds($instruktur)
+            ->merge($replacementGroupIds)
+            ->unique()
+            ->values();
+
+        return $pertemuan
+            ->filter(function (Pertemuan $meeting) use ($instruktur, $manageableGroupIds): bool {
+                if ((int) $meeting->instruktur_pengganti_id === (int) $instruktur->id) {
+                    return true;
+                }
+
+                $groupIds = array_filter([
+                    $meeting->kelompok_host_id,
+                    $meeting->kegiatan?->kelompok_id,
+                ], static fn ($id): bool => $id !== null);
+
+                foreach ($groupIds as $groupId) {
+                    if ($manageableGroupIds->contains((int) $groupId)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            })
+            ->modelKeys();
+    }
+
     private function currentInstructor(Request $request): ?InfrastrukturSik
     {
-        $role = $request->user()->role;
+        $user = $request->user();
+        $role = $user instanceof User ? $user->resolvedRole() : null;
 
         if ($role === UserRole::Admin) {
             return null;

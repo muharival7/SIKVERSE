@@ -9,6 +9,7 @@ use App\Models\Kelompok;
 use App\Models\KelulusanSik;
 use App\Models\PeriodeSik;
 use App\Models\Pertemuan;
+use App\Models\RiwayatKeputusanKelulusan;
 use App\Models\Santri;
 use App\Models\SertifikatSik;
 use App\Models\User;
@@ -78,18 +79,31 @@ function makeKelulusanEligibilityFixture(int $jumlahHadir): array
     return compact('admin', 'santri', 'anggota');
 }
 
-test('a santri with 13 of 16 attendances cannot be marked as passed', function () {
+test('an admin can mark a santri as passed below the attendance threshold', function () {
     $fixture = makeKelulusanEligibilityFixture(13);
 
     $this->actingAs($fixture['admin'])
         ->post(route('kelulusan-sik.store'), [
             'anggota_periode_sik_id' => $fixture['anggota']->id,
             'status' => 'Lulus',
+            'keterangan' => 'Keputusan Admin di luar ambang ujian.',
         ])
-        ->assertSessionHasErrors('status');
+        ->assertRedirect(route('kelulusan-sik.index'))
+        ->assertSessionHasNoErrors();
 
-    $this->assertDatabaseMissing('kelulusan_sik', [
-        'anggota_periode_sik_id' => $fixture['anggota']->id,
+    $kelulusan = KelulusanSik::query()
+        ->where('anggota_periode_sik_id', $fixture['anggota']->id)
+        ->firstOrFail();
+
+    $this->assertDatabaseHas('kelulusan_sik', [
+        'id' => $kelulusan->id,
+        'status' => 'Lulus',
+    ]);
+    $this->assertDatabaseHas('riwayat_keputusan_kelulusan', [
+        'kelulusan_sik_id' => $kelulusan->id,
+        'actor_user_id' => $fixture['admin']->id,
+        'status_sesudahnya' => 'Lulus',
+        'alasan' => 'Keputusan Admin di luar ambang ujian.',
     ]);
 });
 
@@ -110,12 +124,17 @@ test('a santri with 14 of 16 attendances can be marked as passed', function () {
     ]);
 });
 
-test('a certificate cannot be issued to a lulus record below the attendance threshold', function () {
+test('a certificate can be issued for the latest admin lulus decision below the attendance threshold', function () {
     Storage::fake('local');
     $fixture = makeKelulusanEligibilityFixture(13);
     $kelulusan = KelulusanSik::create([
         'anggota_periode_sik_id' => $fixture['anggota']->id,
         'status' => 'Lulus',
+    ]);
+    RiwayatKeputusanKelulusan::query()->create([
+        'kelulusan_sik_id' => $kelulusan->id,
+        'actor_user_id' => $fixture['admin']->id,
+        'status_sesudahnya' => 'Lulus',
     ]);
 
     $this->actingAs($fixture['admin'])
@@ -127,10 +146,12 @@ test('a certificate cannot be issued to a lulus record below the attendance thre
                 "%PDF-1.4\nSertifikat uji\n"
             ),
         ])
-        ->assertSessionHasErrors('kelulusan_sik_id');
+        ->assertRedirect(route('sertifikat-sik.index'))
+        ->assertSessionHasNoErrors();
 
-    $this->assertDatabaseMissing('sertifikat_sik', [
+    $this->assertDatabaseHas('sertifikat_sik', [
         'kelulusan_sik_id' => $kelulusan->id,
+        'nomor_sertifikat' => 'CERT-13-001',
     ]);
 });
 
@@ -140,6 +161,11 @@ test('a certificate can be issued to a lulus record meeting the attendance thres
     $kelulusan = KelulusanSik::create([
         'anggota_periode_sik_id' => $fixture['anggota']->id,
         'status' => 'Lulus',
+    ]);
+    RiwayatKeputusanKelulusan::query()->create([
+        'kelulusan_sik_id' => $kelulusan->id,
+        'actor_user_id' => $fixture['admin']->id,
+        'status_sesudahnya' => 'Lulus',
     ]);
 
     $this->actingAs($fixture['admin'])

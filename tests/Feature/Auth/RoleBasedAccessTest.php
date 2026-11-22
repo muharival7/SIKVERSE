@@ -63,7 +63,7 @@ test('users without the admin role cannot open the admin dashboard', function (U
     'Ka-Lab Mutu' => [UserRole::KaLabMutu],
 ]);
 
-test('public registration always creates a santri account', function () {
+test('public registration is disabled for every requested role', function () {
     config()->set('sik.auth.require_email_verification', false);
 
     $this->post('/register', [
@@ -75,12 +75,10 @@ test('public registration always creates a santri account', function () {
         'password' => 'password',
         'password_confirmation' => 'password',
         'role' => UserRole::Admin->value,
-    ])->assertRedirect(route('dashboard', absolute: false));
+    ])->assertNotFound();
 
-    $this->assertDatabaseHas('users', [
-        'email' => 'santri@example.test',
-        'role' => UserRole::Santri->value,
-    ]);
+    $this->assertGuest();
+    $this->assertDatabaseMissing('users', ['email' => 'santri@example.test']);
 });
 
 test('users cannot open dashboards assigned to other roles', function () {

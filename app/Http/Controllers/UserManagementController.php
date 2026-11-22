@@ -162,7 +162,7 @@ class UserManagementController extends Controller
 
     public function edit(User $user): View
     {
-        abort_unless($user->role === UserRole::InfrastrukturSik, 404);
+        abort_unless($user->resolvedRole() === UserRole::InfrastrukturSik, 404);
 
         $user->load('infrastrukturSik');
         $status = $user->infrastrukturSik?->status;
@@ -172,7 +172,7 @@ class UserManagementController extends Controller
 
     public function update(Request $request, User $user): RedirectResponse
     {
-        abort_unless($user->role === UserRole::InfrastrukturSik, 404);
+        abort_unless($user->resolvedRole() === UserRole::InfrastrukturSik, 404);
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -239,7 +239,7 @@ class UserManagementController extends Controller
 
     public function destroy(Request $request, User $user): RedirectResponse
     {
-        abort_unless($user->role === UserRole::InfrastrukturSik, 404);
+        abort_unless($user->resolvedRole() === UserRole::InfrastrukturSik, 404);
 
         if ((int) $user->id === (int) $request->user()->id) {
             return back()->with('error', 'Akun yang sedang digunakan tidak dapat dihapus.');

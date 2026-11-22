@@ -33,7 +33,7 @@ class AttendanceAuthorizationService
 
     public function isActiveInstructor(InfrastrukturSik $instruktur): bool
     {
-        return $instruktur->status === 'Aktif';
+        return $instruktur->isActive();
     }
 
     public function authorize(
@@ -47,6 +47,8 @@ class AttendanceAuthorizationService
             ]);
         }
 
+        $this->assertActiveInstructor($instruktur);
+
         $kegiatan = $pertemuan->kegiatan;
 
         if (! $kegiatan instanceof Kegiatan) {
@@ -58,7 +60,6 @@ class AttendanceAuthorizationService
         if ($this->isSharedActivity($kegiatan)) {
             $this->assertSharedActivityShape($kegiatan, $pertemuan);
             $this->assertSharedMembership($anggota, $kegiatan);
-            $this->assertSharedInstructor($instruktur);
 
             return;
         }
@@ -89,6 +90,18 @@ class AttendanceAuthorizationService
             ]);
         }
 
+        if ($targetGroup->status !== 'Aktif') {
+            throw ValidationException::withMessages([
+                'pertemuan_id' => 'Kelompok target pertemuan tidak aktif.',
+            ]);
+        }
+
+        if ($anggota->status !== 'Aktif') {
+            throw ValidationException::withMessages([
+                'anggota_periode_sik_id' => 'Anggota periode SIK tidak aktif.',
+            ]);
+        }
+
         $periodeIds = array_map('intval', array_filter([
             $anggota->periode_sik_id,
             $kegiatan->periode_sik_id,
@@ -114,20 +127,14 @@ class AttendanceAuthorizationService
                 'anggota_periode_sik_id' => 'Kelompok santri tidak ditemukan.',
             ]);
         }
-
-        if ($instruktur instanceof InfrastrukturSik) {
-            $isAssigned = (int) $anggota->kelompok->instruktur_id === (int) $instruktur->id
-                || (int) $pertemuan->kelompokHost?->instruktur_id === (int) $instruktur->id
-                || (int) $pertemuan->instruktur_pengganti_id === (int) $instruktur->id;
-
-            abort_unless($isAssigned, 403);
-        }
     }
 
     /**
-     * Otorisasi membuka halaman input kehadiran satu pertemuan. Admin selalu
-     * diizinkan. Instruktur SIK aktif mencakup seluruh kelompok untuk kegiatan bersama,
-     * sedangkan kegiatan reguler tetap dibatasi pada kelompok penanggung jawab.
+     * Otorisasi pengelolaan satu pertemuan. Input absensi dibuka untuk seluruh
+     * kelompok aktif melalui authorize(), tetapi penandaan selesai dan aksi
+     * pengelolaan lainnya tetap pada pemilik kelompok, Dosen pengganti yang
+     * ditunjuk, atau Admin. Untuk kegiatan bersama yang tanpa kelompok host,
+     * yang berwenang adalah Dosen pengganti yang ditunjuk atau Admin.
      */
     public function authorizePertemuanAccess(Pertemuan $pertemuan, ?InfrastrukturSik $instruktur): void
     {
@@ -136,6 +143,8 @@ class AttendanceAuthorizationService
                 'pertemuan_id' => 'Pertemuan yang dibatalkan tidak menerima absensi.',
             ]);
         }
+
+        $this->assertActiveInstructor($instruktur);
 
         $kegiatan = $pertemuan->kegiatan;
 
@@ -147,7 +156,16 @@ class AttendanceAuthorizationService
 
         if ($this->isSharedActivity($kegiatan)) {
             $this->assertSharedActivityShape($kegiatan, $pertemuan);
-            $this->assertSharedInstructor($instruktur);
+
+            if (! $instruktur instanceof InfrastrukturSik) {
+                return;
+            }
+
+            abort_unless(
+                (int) $pertemuan->instruktur_pengganti_id === (int) $instruktur->id,
+                403,
+                'Anda tidak berwenang menandai selesai kegiatan bersama.'
+            );
 
             return;
         }
@@ -157,6 +175,12 @@ class AttendanceAuthorizationService
         if (! $targetGroup instanceof Kelompok) {
             throw ValidationException::withMessages([
                 'pertemuan_id' => 'Target kelompok pertemuan belum ditentukan. Isi kelompok host pertemuan atau kelompok kegiatan terlebih dahulu.',
+            ]);
+        }
+
+        if ($targetGroup->status !== 'Aktif') {
+            throw ValidationException::withMessages([
+                'pertemuan_id' => 'Kelompok target pertemuan tidak aktif.',
             ]);
         }
 
@@ -171,26 +195,100 @@ class AttendanceAuthorizationService
     }
 
     /**
-     * Otorisasi perubahan tanggal pertemuan. Admin ($instruktur null) selalu
-     * diizinkan; instruktur hanya untuk pertemuan yang menjadi tanggung jawabnya.
+     * Otorisasi perubahan tanggal pertemuan. Izin ini sengaja dipisahkan dari
+     * authorizePertemuanAccess(): semua instruktur aktif boleh mengubah tanggal
+     * pertemuan pada kelompok aktif mana pun, sedangkan Tandai Selesai tetap
+     * menjadi hak penanggung jawab atau instruktur pengganti.
+     *
+     * Admin dilewati melalui $instruktur null. Parameter kelompok/periode
+     * opsional dipakai untuk menolak manipulasi nilai tersembunyi dari form.
      */
-    public function authorizePertemuanDateChange(Pertemuan $pertemuan, ?InfrastrukturSik $instruktur): void
-    {
+    public function authorizePertemuanDateChange(
+        Pertemuan $pertemuan,
+        ?InfrastrukturSik $instruktur,
+        ?int $expectedKelompokId = null,
+        ?int $expectedPeriodeId = null
+    ): void {
         if ($pertemuan->status === 'Dibatalkan') {
             throw ValidationException::withMessages([
                 'tanggal_baru' => 'Tanggal pertemuan yang dibatalkan tidak dapat diubah.',
             ]);
         }
 
-        if (! $instruktur instanceof InfrastrukturSik) {
+        $this->assertActiveInstructor($instruktur);
+
+        $kegiatan = $pertemuan->kegiatan;
+
+        if (! $kegiatan instanceof Kegiatan) {
+            throw ValidationException::withMessages([
+                'pertemuan_id' => 'Kegiatan pertemuan tidak ditemukan.',
+            ]);
+        }
+
+        if ($this->isSharedActivity($kegiatan)) {
+            $this->assertSharedActivityShape($kegiatan, $pertemuan);
+
+            if (! $instruktur instanceof InfrastrukturSik) {
+                return;
+            }
+
+            abort_unless(
+                (int) $pertemuan->instruktur_pengganti_id === (int) $instruktur->id,
+                403,
+                'Anda tidak berwenang mengubah tanggal pertemuan ini.'
+            );
+
             return;
         }
 
-        $isAssigned = (int) $pertemuan->kelompokHost?->instruktur_id === (int) $instruktur->id
-            || (int) $pertemuan->kegiatan?->kelompok?->instruktur_id === (int) $instruktur->id
-            || (int) $pertemuan->instruktur_pengganti_id === (int) $instruktur->id;
+        $hostGroup = $pertemuan->kelompokHost;
+        $activityGroup = $kegiatan->kelompok;
 
-        abort_unless($isAssigned, 403, 'Anda tidak berwenang mengubah tanggal pertemuan ini.');
+        if ($hostGroup instanceof Kelompok && $activityGroup instanceof Kelompok
+            && (int) $hostGroup->id !== (int) $activityGroup->id) {
+            throw ValidationException::withMessages([
+                'kelompok_id' => 'Kelompok host pertemuan dan kelompok kegiatan tidak konsisten.',
+            ]);
+        }
+
+        $targetGroup = $hostGroup ?? $activityGroup;
+
+        if (! $targetGroup instanceof Kelompok) {
+            throw ValidationException::withMessages([
+                'kelompok_id' => 'Target kelompok pertemuan belum ditentukan.',
+            ]);
+        }
+
+        if ($targetGroup->status !== 'Aktif') {
+            throw ValidationException::withMessages([
+                'kelompok_id' => 'Kelompok target pertemuan tidak aktif.',
+            ]);
+        }
+
+        $periodeIds = array_map('intval', array_filter([
+            $kegiatan->periode_sik_id,
+            $targetGroup->periode_sik_id,
+            $hostGroup?->periode_sik_id,
+            $activityGroup?->periode_sik_id,
+        ], static fn ($value): bool => $value !== null));
+
+        if (count(array_unique($periodeIds)) > 1) {
+            throw ValidationException::withMessages([
+                'periode_sik_id' => 'Periode kegiatan dan kelompok pertemuan harus sama.',
+            ]);
+        }
+
+        if ($expectedKelompokId !== null && (int) $targetGroup->id !== $expectedKelompokId) {
+            throw ValidationException::withMessages([
+                'kelompok_id' => 'Kelompok pertemuan tidak sesuai dengan data yang akan diubah.',
+            ]);
+        }
+
+        if ($expectedPeriodeId !== null && (int) $kegiatan->periode_sik_id !== $expectedPeriodeId) {
+            throw ValidationException::withMessages([
+                'periode_sik_id' => 'Periode pertemuan tidak sesuai dengan data yang akan diubah.',
+            ]);
+        }
     }
 
     private function assertSharedActivityShape(Kegiatan $kegiatan, Pertemuan $pertemuan): void
@@ -231,7 +329,7 @@ class AttendanceAuthorizationService
         }
     }
 
-    private function assertSharedInstructor(?InfrastrukturSik $instruktur): void
+    private function assertActiveInstructor(?InfrastrukturSik $instruktur): void
     {
         if (! $instruktur instanceof InfrastrukturSik) {
             return;

@@ -72,7 +72,7 @@ test('sertifikat management index uses the spaced page and table layout', functi
         ->assertSee('Santri Sertifikat');
 });
 
-test('sertifikat create and edit pages use the consistent form layout', function () {
+test('halaman create sertifikat memakai tata letak formulir yang konsisten', function () {
     $fixture = createSertifikatPresentationFixture();
 
     $this->actingAs($fixture['admin'])
@@ -81,13 +81,15 @@ test('sertifikat create and edit pages use the consistent form layout', function
         ->assertSee('sertifikat-form-shell', false)
         ->assertSee('sertifikat-form-actions', false)
         ->assertSee('Terbitkan Sertifikat');
+});
+
+test('halaman edit sertifikat lama ditolak', function () {
+    $fixture = createSertifikatPresentationFixture();
 
     $this->actingAs($fixture['admin'])
         ->get(route('sertifikat-sik.edit', $fixture['certificate']))
-        ->assertOk()
-        ->assertSee('sertifikat-form-shell', false)
-        ->assertSee('sertifikat-form-actions', false)
-        ->assertSee('Edit Sertifikat');
+        ->assertForbidden()
+        ->assertSee('bersifat final dan tidak dapat diubah atau dihapus');
 });
 
 test('admin dashboard certificate card separates the count, description, and action', function () {

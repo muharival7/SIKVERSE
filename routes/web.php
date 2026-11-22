@@ -179,9 +179,27 @@ Route::middleware($authenticatedMiddleware)->group(function (): void {
             'preview',
         ])->name('sertifikat-sik.preview');
 
-        // Manajemen Sertifikat
+        // Manajemen Sertifikat: hanya penerbitan yang dibuka. Rute edit,
+        // update, dan destroy sengaja didaftarkan secara eksplisit agar
+        // permintaan ditolak controller dengan pesan sertifikat beku (403),
+        // bukan sekadar tidak ditemukan (404).
         Route::resource('sertifikat-sik', SertifikatSikController::class)
-            ->except(['show']);
+            ->only(['index', 'create', 'store']);
+
+        Route::get('/sertifikat-sik/{sertifikatSik}/edit', [
+            SertifikatSikController::class,
+            'edit',
+        ])->name('sertifikat-sik.edit');
+
+        Route::match(['put', 'patch'], '/sertifikat-sik/{sertifikatSik}', [
+            SertifikatSikController::class,
+            'update',
+        ])->name('sertifikat-sik.update');
+
+        Route::delete('/sertifikat-sik/{sertifikatSik}', [
+            SertifikatSikController::class,
+            'destroy',
+        ])->name('sertifikat-sik.destroy');
 
     });
 

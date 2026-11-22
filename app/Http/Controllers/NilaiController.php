@@ -5,11 +5,15 @@ namespace App\Http\Controllers;
 use App\Enums\UserRole;
 use App\Models\AnggotaPeriodeSik;
 use App\Models\InfrastrukturSik;
+use App\Models\Kegiatan;
 use App\Models\Kelompok;
 use App\Models\MataPelajaran;
 use App\Models\Nilai;
 use App\Models\PeriodeSik;
 use App\Models\Santri;
+use App\Services\ExamEligibilityService;
+use App\Services\InstructorKelompokService;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +23,11 @@ use Illuminate\View\View;
 
 class NilaiController extends Controller
 {
+    public function __construct(
+        private readonly InstructorKelompokService $instructorKelompokService,
+        private readonly ExamEligibilityService $examEligibilityService
+    ) {}
+
     public function index(Request $request): View
     {
         if ($request->user()->role === UserRole::Admin) {
@@ -26,19 +35,38 @@ class NilaiController extends Controller
         }
 
         $instruktur = $this->currentInstructor($request);
+        $ownedGroupIds = $this->instructorKelompokService->ownedGroupIds($instruktur);
+        $gradeableGroupIds = $this->instructorKelompokService->activeOwnedGroupIds($instruktur, $ownedGroupIds);
+        $selectedGroupIds = $this->instructorKelompokService->resolveSelectedGroupIds(
+            $request->query('kelompok_id', []),
+            $gradeableGroupIds
+        );
+        $search = trim((string) $request->query('q', ''));
 
         $santris = Santri::query()
             ->with([
                 'nilai' => fn ($query) => $query
                     ->where('infrastruktur_sik_id', $instruktur->id)
-                    ->with('mataPelajaran'),
+                    ->with(['mataPelajaran', 'kegiatan']),
+                'anggotaPeriode' => fn ($query) => $query
+                    ->where('status', 'Aktif')
+                    ->whereIn('kelompok_id', $gradeableGroupIds)
+                    ->with(['kelompok', 'periode']),
             ])
-            ->whereHas('anggotaPeriode', function ($query) use ($instruktur): void {
+            ->whereHas('anggotaPeriode', function ($query) use ($gradeableGroupIds, $selectedGroupIds): void {
                 $query->where('status', 'Aktif')
-                    ->whereHas('kelompok', function ($query) use ($instruktur): void {
-                        $query->where('instruktur_id', $instruktur->id)
-                            ->where('status', 'Aktif');
-                    });
+                    ->whereIn('kelompok_id', $gradeableGroupIds)
+                    ->whereHas('kelompok', fn ($groupQuery) => $groupQuery->where('status', 'Aktif'));
+
+                if ($selectedGroupIds !== []) {
+                    $query->whereIn('kelompok_id', $selectedGroupIds);
+                }
+            })
+            ->when($search !== '', function ($query) use ($search): void {
+                $query->where(function ($query) use ($search): void {
+                    $query->where('nama', 'like', '%'.$search.'%')
+                        ->orWhere('nomor_induk', 'like', '%'.$search.'%');
+                });
             })
             ->orderBy('nama')
             ->get();
@@ -62,7 +90,36 @@ class NilaiController extends Controller
             ->orderBy('nama_mapel')
             ->get();
 
-        return view('nilai.index', compact('santris', 'mataPelajaran'));
+        $kelompoks = Kelompok::query()
+            ->whereIn('id', $gradeableGroupIds)
+            ->where('status', 'Aktif')
+            ->orderBy('nama_kelompok')
+            ->orderBy('id')
+            ->get();
+
+        $kegiatans = Kegiatan::query()
+            ->with(['kelompok', 'periode'])
+            ->whereIn('kelompok_id', $gradeableGroupIds)
+            ->where('status', 'Aktif')
+            ->orderBy('nama_kegiatan')
+            ->orderBy('id')
+            ->get();
+
+        foreach ($santris as $santri) {
+            $santri->setAttribute(
+                'exam_eligibility',
+                $this->examEligibilityService->forSantri((int) $santri->id)
+            );
+        }
+
+        return view('nilai.index', compact(
+            'santris',
+            'mataPelajaran',
+            'kelompoks',
+            'kegiatans',
+            'selectedGroupIds',
+            'search'
+        ));
     }
 
     public function store(Request $request): RedirectResponse
@@ -71,29 +128,48 @@ class NilaiController extends Controller
         $validated = $request->validate($this->validationRules());
 
         $this->ensureInstructorCanGrade($instruktur, (int) $validated['santri_id']);
+        $jenisNilai = $validated['jenis_nilai'] ?? 'Harian';
+        $kegiatanId = $validated['kegiatan_id'] ?? null;
 
-        DB::transaction(function () use ($validated, $instruktur): void {
+        $this->ensureKegiatanDipilih($jenisNilai, $kegiatanId);
+        $this->ensureKegiatanCanGrade($instruktur, (int) $validated['santri_id'], $kegiatanId);
+        $this->ensureExamEligible((int) $validated['santri_id'], $jenisNilai, $kegiatanId);
+
+        DB::transaction(function () use ($validated, $instruktur, $jenisNilai, $kegiatanId): void {
             $mataPelajaran = $this->resolveMataPelajaran(
                 $validated['nama_mapel'],
                 $validated['semester']
             );
 
-            $this->ensureNilaiIsUnique(
-                (int) $validated['santri_id'],
-                (int) $mataPelajaran->id,
-                $validated['semester'],
-                $validated['tahun_ajaran'],
-            );
+            if ($jenisNilai === 'Ujian') {
+                $this->ensureExamGradeIsUnique(
+                    (int) $validated['santri_id'],
+                    (int) $kegiatanId,
+                );
+            } else {
+                $this->ensureNilaiIsUnique(
+                    (int) $validated['santri_id'],
+                    (int) $mataPelajaran->id,
+                    $validated['semester'],
+                    $validated['tahun_ajaran'],
+                );
+            }
 
-            Nilai::create([
-                'santri_id' => $validated['santri_id'],
-                'mata_pelajaran_id' => $mataPelajaran->id,
-                'infrastruktur_sik_id' => $instruktur->id,
-                'semester' => $validated['semester'],
-                'tahun_ajaran' => $validated['tahun_ajaran'],
-                'nilai' => $validated['nilai'],
-                'keterangan' => $validated['keterangan'] ?? null,
-            ]);
+            try {
+                Nilai::create([
+                    'santri_id' => $validated['santri_id'],
+                    'mata_pelajaran_id' => $mataPelajaran->id,
+                    'kegiatan_id' => $kegiatanId,
+                    'jenis_nilai' => $jenisNilai,
+                    'infrastruktur_sik_id' => $instruktur->id,
+                    'semester' => $validated['semester'],
+                    'tahun_ajaran' => $validated['tahun_ajaran'],
+                    'nilai' => $validated['nilai'],
+                    'keterangan' => $validated['keterangan'] ?? null,
+                ]);
+            } catch (QueryException $exception) {
+                $this->throwUniqueViolation($exception);
+            }
         });
 
         return redirect()->route('nilai.index')
@@ -107,29 +183,49 @@ class NilaiController extends Controller
 
         $validated = $request->validate($this->validationRules());
         $this->ensureInstructorCanGrade($instruktur, (int) $validated['santri_id']);
+        $jenisNilai = $validated['jenis_nilai'] ?? 'Harian';
+        $kegiatanId = $validated['kegiatan_id'] ?? null;
 
-        DB::transaction(function () use ($nilai, $validated): void {
+        $this->ensureKegiatanDipilih($jenisNilai, $kegiatanId);
+        $this->ensureKegiatanCanGrade($instruktur, (int) $validated['santri_id'], $kegiatanId);
+        $this->ensureExamEligible((int) $validated['santri_id'], $jenisNilai, $kegiatanId);
+
+        DB::transaction(function () use ($nilai, $validated, $jenisNilai, $kegiatanId): void {
             $mataPelajaran = $this->resolveMataPelajaran(
                 $validated['nama_mapel'],
                 $validated['semester']
             );
 
-            $this->ensureNilaiIsUnique(
-                (int) $validated['santri_id'],
-                (int) $mataPelajaran->id,
-                $validated['semester'],
-                $validated['tahun_ajaran'],
-                (int) $nilai->id,
-            );
+            if ($jenisNilai === 'Ujian') {
+                $this->ensureExamGradeIsUnique(
+                    (int) $validated['santri_id'],
+                    (int) $kegiatanId,
+                    (int) $nilai->id,
+                );
+            } else {
+                $this->ensureNilaiIsUnique(
+                    (int) $validated['santri_id'],
+                    (int) $mataPelajaran->id,
+                    $validated['semester'],
+                    $validated['tahun_ajaran'],
+                    (int) $nilai->id,
+                );
+            }
 
-            $nilai->update([
-                'santri_id' => $validated['santri_id'],
-                'mata_pelajaran_id' => $mataPelajaran->id,
-                'semester' => $validated['semester'],
-                'tahun_ajaran' => $validated['tahun_ajaran'],
-                'nilai' => $validated['nilai'],
-                'keterangan' => $validated['keterangan'] ?? null,
-            ]);
+            try {
+                $nilai->update([
+                    'santri_id' => $validated['santri_id'],
+                    'mata_pelajaran_id' => $mataPelajaran->id,
+                    'kegiatan_id' => $kegiatanId,
+                    'jenis_nilai' => $jenisNilai,
+                    'semester' => $validated['semester'],
+                    'tahun_ajaran' => $validated['tahun_ajaran'],
+                    'nilai' => $validated['nilai'],
+                    'keterangan' => $validated['keterangan'] ?? null,
+                ]);
+            } catch (QueryException $exception) {
+                $this->throwUniqueViolation($exception);
+            }
         });
 
         return redirect()->route('nilai.index')
@@ -227,16 +323,102 @@ class NilaiController extends Controller
 
     private function ensureInstructorCanGrade(InfrastrukturSik $instruktur, int $santriId): void
     {
+        $gradeableGroupIds = $this->instructorKelompokService->activeOwnedGroupIds($instruktur);
+
         $isAssignedToSantri = AnggotaPeriodeSik::query()
             ->where('santri_id', $santriId)
             ->where('status', 'Aktif')
-            ->whereHas('kelompok', function ($query) use ($instruktur): void {
-                $query->where('instruktur_id', $instruktur->id)
-                    ->where('status', 'Aktif');
-            })
+            ->whereIn('kelompok_id', $gradeableGroupIds)
+            ->whereHas('kelompok', fn ($query) => $query->where('status', 'Aktif'))
             ->exists();
 
         abort_unless($isAssignedToSantri, 403, 'Santri bukan anggota kelompok instruktur ini.');
+    }
+
+    private function ensureKegiatanDipilih(string $jenisNilai, ?int $kegiatanId): void
+    {
+        if ($jenisNilai === 'Ujian' && $kegiatanId === null) {
+            throw ValidationException::withMessages([
+                'kegiatan_id' => 'Kegiatan SIK wajib dipilih untuk nilai ujian akhir.',
+            ]);
+        }
+    }
+
+    private function ensureKegiatanCanGrade(InfrastrukturSik $instruktur, int $santriId, ?int $kegiatanId): void
+    {
+        if ($kegiatanId === null) {
+            return;
+        }
+
+        $kegiatan = Kegiatan::query()->findOrFail($kegiatanId);
+        $ownedGroupIds = $this->instructorKelompokService->activeOwnedGroupIds($instruktur);
+
+        abort_unless(
+            $kegiatan->kelompok_id !== null && $ownedGroupIds->contains($kegiatan->kelompok_id),
+            403,
+            'Kegiatan SIK bukan kelompok tanggung jawab Anda.'
+        );
+
+        $isAnggotaKegiatan = AnggotaPeriodeSik::query()
+            ->where('santri_id', $santriId)
+            ->where('periode_sik_id', $kegiatan->periode_sik_id)
+            ->where('kelompok_id', $kegiatan->kelompok_id)
+            ->where('status', 'Aktif')
+            ->whereHas('kelompok', fn ($query) => $query->where('status', 'Aktif'))
+            ->exists();
+
+        abort_unless($isAnggotaKegiatan, 403, 'Santri bukan anggota kegiatan SIK yang dipilih.');
+    }
+
+    private function ensureExamEligible(int $santriId, string $jenisNilai, ?int $kegiatanId): void
+    {
+        if ($jenisNilai !== 'Ujian') {
+            return;
+        }
+
+        if ($this->examEligibilityService->forSantri($santriId, $kegiatanId)['eligible']) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'jenis_nilai' => $this->examEligibilityService->rejectionMessage($santriId, $kegiatanId),
+        ]);
+    }
+
+    private function ensureExamGradeIsUnique(
+        int $santriId,
+        int $kegiatanId,
+        ?int $ignoreNilaiId = null
+    ): void {
+        $exists = Nilai::query()
+            ->where('santri_id', $santriId)
+            ->where('kegiatan_id', $kegiatanId)
+            ->where('jenis_nilai', 'Ujian')
+            ->when($ignoreNilaiId !== null, fn ($query) => $query->whereKeyNot($ignoreNilaiId))
+            ->exists();
+
+        if ($exists) {
+            throw ValidationException::withMessages([
+                'jenis_nilai' => 'Nilai ujian akhir untuk santri ini pada Kegiatan SIK tersebut sudah tersedia. Ubah nilai yang sudah tercatat.',
+            ]);
+        }
+    }
+
+    private function throwUniqueViolation(QueryException $exception): never
+    {
+        $message = $exception->getMessage();
+        $isExamViolation = str_contains($message, 'ujian_kegiatan_id')
+            || str_contains($message, 'nilai_ujian_santri_kegiatan_unique');
+
+        if ($isExamViolation) {
+            throw ValidationException::withMessages([
+                'jenis_nilai' => 'Nilai ujian akhir untuk santri ini pada Kegiatan SIK tersebut sudah tersedia. Ubah nilai yang sudah tercatat.',
+            ]);
+        }
+
+        throw ValidationException::withMessages([
+            'nama_mapel' => 'Nilai untuk mata pelajaran, semester, dan tahun ajaran ini sudah ada. Ubah nilai yang sudah tercatat.',
+        ]);
     }
 
     /**
@@ -246,6 +428,8 @@ class NilaiController extends Controller
     {
         return [
             'santri_id' => ['required', 'integer', 'exists:santris,id'],
+            'kegiatan_id' => ['sometimes', 'nullable', 'integer', 'exists:kegiatan,id'],
+            'jenis_nilai' => ['sometimes', Rule::in(['Harian', 'Ujian'])],
             'nama_mapel' => ['required', 'string', 'max:255'],
             'semester' => ['required', 'string', 'max:50'],
             'tahun_ajaran' => ['required', 'string', 'max:20'],

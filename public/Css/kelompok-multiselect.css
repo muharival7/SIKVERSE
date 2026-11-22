@@ -1,0 +1,131 @@
+.kelompok-multiselect {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.kelompok-multiselect-panel {
+    position: relative;
+    min-width: 0;
+}
+
+.kelompok-multiselect-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    min-height: 42px;
+    padding: .55rem .75rem;
+    border-color: #e8dddd;
+    border-radius: 9px;
+    background: #fff;
+    color: #252128;
+    cursor: pointer;
+    font-size: .875rem;
+    line-height: 1.3;
+    list-style: none;
+    text-align: left;
+}
+
+.kelompok-multiselect-toggle::-webkit-details-marker {
+    display: none;
+}
+
+.kelompok-multiselect-toggle::marker {
+    content: '';
+}
+
+.kelompok-multiselect-toggle:focus-visible {
+    border-color: #760d12;
+    box-shadow: 0 0 0 .18rem rgba(118, 13, 18, .14);
+    outline: 0;
+}
+
+.kelompok-multiselect-summary {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.kelompok-multiselect-count {
+    flex: 0 0 auto;
+    padding: .1rem .45rem;
+    border-radius: 999px;
+    background: #f9ecec;
+    color: #760d12;
+    font-size: .68rem;
+    font-weight: 800;
+}
+
+.kelompok-multiselect-menu {
+    position: absolute;
+    z-index: 1080;
+    top: calc(100% + .35rem);
+    right: 0;
+    left: 0;
+    max-height: 196px;
+    overflow-y: auto;
+    padding: .45rem;
+    border: 1px solid #e8dddd;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 14px 34px rgba(52, 32, 34, .14);
+}
+
+.kelompok-multiselect-divider {
+    height: 1px;
+    margin: .35rem .25rem;
+    background: #f0e8e8;
+}
+
+.kelompok-option {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    min-height: 34px;
+    margin: 0;
+    padding: .35rem .5rem;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: .82rem;
+}
+
+.kelompok-option:hover {
+    background: #fbf4f4;
+}
+
+.kelompok-option .form-check-input {
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+.kelompok-option .form-check-input:checked {
+    border-color: #760d12;
+    background-color: #760d12;
+}
+
+.kelompok-option .form-check-input:focus {
+    box-shadow: 0 0 0 .16rem rgba(118, 13, 18, .16);
+}
+
+.kelompok-option .form-check-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.kelompok-multiselect-help {
+    margin-top: .3rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+    .kelompok-multiselect-menu {
+        position: static;
+        max-height: 210px;
+        margin-top: .4rem;
+    }
+}

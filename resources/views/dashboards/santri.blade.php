@@ -197,8 +197,8 @@
                             Sertifikat akan muncul di sini setelah diterbitkan.
                         @endif
                     </p>
-                    @if ($sertifikat && $graduationEvaluation['code'] !== \App\Services\AttendanceRecapService::GRADUATION_PASSED)
-                        <p class="small text-muted mb-0">Berkas lama tetap tersedia; evaluasi kehadiran terbaru: {{ $graduationEvaluation['label'] }}.</p>
+                    @if ($sertifikat)
+                        <p class="small text-muted mb-0">Berkas lama tetap tersedia; status kelulusan mengikuti keputusan Admin terbaru: {{ $graduationEvaluation['label'] }}.</p>
                     @endif
                 </div>
                 @if ($sertifikat)

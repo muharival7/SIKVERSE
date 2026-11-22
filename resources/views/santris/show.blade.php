@@ -48,7 +48,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach ($santri->anggotaPeriode->sortByDesc('id') as $membership)
+                        @foreach ($santri->anggotaPeriode as $membership)
                             <tr>
                                 <td>{{ $membership->periode?->nama_periode ?? '—' }}</td>
                                 <td>{{ $membership->kelompok?->nama_kelompok ?? '—' }}</td>

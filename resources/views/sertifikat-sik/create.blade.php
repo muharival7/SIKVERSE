@@ -7,7 +7,7 @@
         <div>
             <span class="sertifikat-eyebrow">SIKVERSE · SERTIFIKAT KELULUSAN</span>
             <h1 class="page-title">Terbitkan Sertifikat</h1>
-            <p>Unggah berkas PDF untuk kelulusan yang sudah dinyatakan lulus dan memenuhi ambang kehadiran.</p>
+            <p>Unggah berkas PDF untuk catatan kelulusan dengan keputusan Admin terbaru Lulus.</p>
         </div>
     </header>
 

@@ -5,7 +5,7 @@
     <div class="card border-0 shadow-sm mb-4" style="background:linear-gradient(135deg, #800000, #5b0000);border-radius:16px">
         <div class="card-body p-4 text-white">
         <h1 class="h3 fw-bold mb-2">Evaluasi Mutu Kelulusan</h1>
-        <p class="mb-0 text-white-50">Perbandingan capaian kelulusan santri berdasarkan tahun periode SIK. Ambang kehadiran: {{ $minimumPercentageDisplay }} dari pertemuan Terlaksana.</p>
+        <p class="mb-0 text-white-50">Perbandingan capaian kelulusan santri berdasarkan tahun periode SIK. Status kelulusan mengikuti keputusan Admin terbaru. Syarat mengikuti ujian: kehadiran {{ $minimumPercentageDisplay }} dari pertemuan Terlaksana.</p>
         </div>
     </div>
 
@@ -69,7 +69,7 @@
     <div class="card border-0 shadow-sm" id="perbandingan-tahun">
         <div class="card-body p-4">
             <h2 class="h5 fw-bold mb-1">Perbandingan Kelulusan Antar Tahun</h2>
-            <p class="text-muted mb-3">Ringkasan status evaluasi kelulusan per tahun menggunakan satu sumber metrik kehadiran.</p>
+            <p class="text-muted mb-3">Ringkasan status kelulusan per tahun mengikuti keputusan Admin terbaru; kehadiran tetap ditampilkan sebagai syarat ujian.</p>
             <div class="table-responsive">
                 <table class="table table-hover table-bordered align-middle mb-0">
                     <thead class="table-light"><tr><th>Tahun</th><th>Total Peserta</th><th>Lulus</th><th>Tidak Lulus</th><th>Belum Ditetapkan</th><th>Persentase Lulus</th><th>Aksi</th></tr></thead>

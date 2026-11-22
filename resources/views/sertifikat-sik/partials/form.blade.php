@@ -17,7 +17,7 @@
         </option>
     @endforeach
 </select>        @error('kelulusan_sik_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
-        <div class="form-text">Hanya catatan Lulus yang memenuhi ambang kehadiran yang dapat dipilih. Sertifikat yang sudah diterbitkan tetap dapat diedit.</div>
+        <div class="form-text">Hanya catatan dengan keputusan Admin terbaru Lulus yang dapat dipilih. Sertifikat yang sudah diterbitkan bersifat final.</div>
     </div>
 
     <div class="col-md-6">

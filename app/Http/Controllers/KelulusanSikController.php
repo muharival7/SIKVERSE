@@ -4,17 +4,22 @@ namespace App\Http\Controllers;
 
 use App\Models\AnggotaPeriodeSik;
 use App\Models\KelulusanSik;
+use App\Models\User;
 use App\Services\AttendanceRecapService;
+use App\Services\GraduationDecisionService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class KelulusanSikController extends Controller
 {
-    public function __construct(private readonly AttendanceRecapService $attendanceRecapService) {}
+    public function __construct(
+        private readonly AttendanceRecapService $attendanceRecapService,
+        private readonly GraduationDecisionService $graduationDecisionService
+    ) {}
 
     public function index(): View
     {
@@ -47,7 +52,21 @@ class KelulusanSikController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        KelulusanSik::create($this->validatedData($request));
+        $validated = $this->validatedData($request);
+        $actor = $request->user();
+        abort_unless($actor instanceof User, 401);
+
+        DB::transaction(function () use ($validated, $actor): void {
+            $kelulusan = KelulusanSik::create($validated);
+
+            $this->graduationDecisionService->record(
+                (int) $kelulusan->id,
+                null,
+                $validated['status'],
+                $actor,
+                $validated['keterangan'] ?? null
+            );
+        });
 
         return redirect()->route('kelulusan-sik.index')
             ->with('success', 'Data kelulusan berhasil disimpan.');
@@ -75,6 +94,8 @@ class KelulusanSikController extends Controller
     public function update(Request $request, KelulusanSik $kelulusanSik): RedirectResponse
     {
         $validated = $this->validatedData($request, $kelulusanSik);
+        $actor = $request->user();
+        abort_unless($actor instanceof User, 401);
 
         if (
             $kelulusanSik->sertifikat()->exists()
@@ -88,7 +109,21 @@ class KelulusanSikController extends Controller
             ]);
         }
 
-        $kelulusanSik->update($validated);
+        $statusSebelumnya = (string) $kelulusanSik->status;
+
+        DB::transaction(function () use ($kelulusanSik, $validated, $statusSebelumnya, $actor): void {
+            $kelulusanSik->update($validated);
+
+            if ($statusSebelumnya !== $validated['status']) {
+                $this->graduationDecisionService->record(
+                    (int) $kelulusanSik->id,
+                    $statusSebelumnya,
+                    $validated['status'],
+                    $actor,
+                    $validated['keterangan'] ?? null
+                );
+            }
+        });
 
         return redirect()->route('kelulusan-sik.index')
             ->with('success', 'Data kelulusan berhasil diperbarui.');
@@ -125,17 +160,6 @@ class KelulusanSikController extends Controller
             'keterangan' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        if ($validated['status'] === 'Lulus') {
-            $anggota = AnggotaPeriodeSik::query()->findOrFail($validated['anggota_periode_sik_id']);
-            $metric = $this->attendanceRecapService->calculateForAnggota((int) $anggota->id);
-
-            if (! $metric['memenuhi']) {
-                throw ValidationException::withMessages([
-                    'status' => 'Santri tidak dapat dinyatakan lulus. '.$this->attendanceRecapService->thresholdRequirementMessage($metric),
-                ]);
-            }
-        }
-
         return $validated;
     }
 
@@ -156,6 +180,11 @@ class KelulusanSikController extends Controller
         $kelulusan->setAttribute('attendance', $evaluasi['metric']);
         $kelulusan->setAttribute('attendance_display', $this->formatMetricPercentage($evaluasi['metric']));
         $kelulusan->setAttribute('alasan_kehadiran', $evaluasi['alasan']);
+
+        $keputusanAdmin = $this->graduationDecisionService->latestDecision((int) $kelulusan->id);
+        $kelulusan->setAttribute('keputusan_admin', $keputusanAdmin?->status_sesudahnya);
+        $kelulusan->setAttribute('keputusan_admin_oleh', $keputusanAdmin?->actor?->name);
+        $kelulusan->setAttribute('keputusan_admin_pada', $keputusanAdmin?->created_at);
 
         return $kelulusan;
     }

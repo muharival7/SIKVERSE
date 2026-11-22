@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureInstructorReadOnlyOnWrite;
 use App\Http\Middleware\EnsurePasswordIsChanged;
 use App\Http\Middleware\EnsureUserHasRole;
 use App\Http\Middleware\PreventCachingAuthenticatedResponses;
@@ -21,7 +22,10 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->redirectGuestsTo(fn (): string => route('login'));
-        $middleware->web(append: PreventCachingAuthenticatedResponses::class);
+        $middleware->web(append: [
+            PreventCachingAuthenticatedResponses::class,
+            EnsureInstructorReadOnlyOnWrite::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

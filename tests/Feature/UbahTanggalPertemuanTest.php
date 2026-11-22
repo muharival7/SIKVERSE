@@ -170,7 +170,7 @@ test('instruktur berwenang dapat mengubah tanggal pertemuan kelompoknya', functi
         ->exists());
 });
 
-test('instruktur tanpa izin tidak dapat mengubah tanggal pertemuan', function () {
+test('instruktur dari kelompok lain dapat mengubah tanggal pertemuan', function () {
     $fixture = createUbahTanggalFixture();
 
     $otherUser = User::factory()->create(['role' => UserRole::InfrastrukturSik]);
@@ -185,11 +185,12 @@ test('instruktur tanpa izin tidak dapat mengubah tanggal pertemuan', function ()
             'tanggal_baru' => '2026-08-20',
             'konfirmasi' => '1',
         ])
-        ->assertForbidden();
+        ->assertRedirect(route('absensi-sik.index'))
+        ->assertSessionHas('success');
 
     $this->assertTrue(DB::table('pertemuan')
         ->where('id', $fixture['pertemuan']->id)
-        ->whereDate('tanggal', '2026-06-15')
+        ->whereDate('tanggal', '2026-08-20')
         ->exists());
 });
 

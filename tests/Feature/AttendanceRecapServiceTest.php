@@ -81,14 +81,14 @@ function createRecapAbsensi(array $fixture, Pertemuan $meeting, string $status):
     ]);
 }
 
-test('ambang 87,5 persen dibandingkan dengan integer tanpa pembagian nol', function () {
+test('ambang 85 persen dibandingkan dengan integer tanpa pembagian nol', function () {
     $service = app(AttendanceRecapService::class);
 
-    expect($service->meetsThreshold(14, 16))->toBeTrue()
-        ->and($service->meetsThreshold(13, 16))->toBeFalse()
+    expect($service->meetsThreshold(17, 20))->toBeTrue()
+        ->and($service->meetsThreshold(16, 20))->toBeFalse()
         ->and($service->meetsThreshold(7, 8))->toBeTrue()
         ->and($service->meetsThreshold(0, 0))->toBeFalse()
-        ->and($service->minimumPercentage())->toBe(87.5);
+        ->and($service->minimumPercentage())->toBe(85.0);
 });
 
 test('rekap hanya menghitung pertemuan Terlaksana', function () {

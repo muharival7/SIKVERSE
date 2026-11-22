@@ -102,7 +102,7 @@ test('inactive santri cannot sign in with their student number', function () {
     $this->assertGuest();
 });
 
-test('inactive infrastructure accounts cannot sign in', function () {
+test('inactive infrastructure accounts can sign in with read-only access', function () {
     $user = User::factory()->create(['role' => UserRole::InfrastrukturSik]);
     InfrastrukturSik::create([
         'user_id' => $user->id,
@@ -110,12 +110,12 @@ test('inactive infrastructure accounts cannot sign in', function () {
         'status' => 'Tidak Aktif',
     ]);
 
-    $this->from('/login')->post('/login', [
+    $this->post('/login', [
         'login' => $user->email,
         'password' => 'password',
-    ])->assertRedirect('/login')->assertSessionHasErrors('login');
+    ])->assertRedirect(route('dashboard.infrastruktur_sik', absolute: false));
 
-    $this->assertGuest();
+    $this->assertAuthenticatedAs($user);
 });
 
 test('unverified synthetic accounts remain unverified when local email verification is disabled', function () {

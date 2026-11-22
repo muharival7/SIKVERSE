@@ -14,7 +14,7 @@ class RecapAttendanceDryRun extends Command
 {
     protected $signature = 'sik:recap-dry-run';
 
-    protected $description = 'Simulasi read-only rekap kehadiran berdasarkan pertemuan Terlaksana dan ambang 87,5%';
+    protected $description = 'Simulasi read-only rekap kehadiran berdasarkan pertemuan Terlaksana dan ambang 85%';
 
     public function __construct(private readonly AttendanceRecapService $attendanceRecapService)
     {

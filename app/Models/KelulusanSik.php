@@ -56,10 +56,10 @@ class KelulusanSik extends Model
     /**
      * Kelayakan kehadiran ditentukan sepenuhnya oleh AttendanceRecapService.
      *
-     * Scope ini tidak menghitung ulang ambang batas; ia hanya membatasi baris
-     * kelulusan pada anggota yang dilaporkan memenuhi oleh service. Service
-     * diambil dari container karena scope Eloquent tidak dapat menerima
-     * constructor injection.
+     * Scope ini hanya membatasi baris pada anggota yang memenuhi syarat
+     * kehadiran untuk mengikuti ujian. Ia tidak menentukan status kelulusan.
+     * Service diambil dari container karena scope Eloquent tidak dapat
+     * menerima constructor injection.
      */
     public function scopeMeetsAttendanceThreshold(Builder $query): Builder
     {

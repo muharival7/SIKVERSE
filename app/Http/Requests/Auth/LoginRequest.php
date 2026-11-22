@@ -72,9 +72,9 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        // Dosen tidak aktif tetap boleh masuk dengan akses baca-saja; penulisan diblokir middleware peran.
         $isInactive = match ($role) {
             UserRole::Santri => $user->santri?->status !== 'Aktif',
-            UserRole::InfrastrukturSik => $user->infrastrukturSik?->status === 'Tidak Aktif',
             UserRole::KaLabMutu => $user->kaLabMutu?->status === 'Tidak Aktif',
             default => false,
         };

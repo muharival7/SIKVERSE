@@ -319,7 +319,7 @@ test('status evaluasi konsisten di dashboard santri, dashboard admin, dan lapora
     $this->actingAs($fixture['admin'])
         ->get(route('dashboard.admin'))
         ->assertOk()
-        ->assertViewHas('adminStats', fn (array $stats): bool => $stats['mahasiswaLulus'] === 0);
+        ->assertViewHas('adminStats', fn (array $stats): bool => $stats['mahasiswaLulus'] === 1);
 
     $this->actingAs($kaLab)
         ->get(route('laporan-sik'))

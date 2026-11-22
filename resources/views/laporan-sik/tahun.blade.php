@@ -8,7 +8,7 @@
                 <div>
                     <span class="text-uppercase small fw-bold" style="letter-spacing:.14em;color:rgba(255,255,255,.7)">Evaluasi Mutu Kelulusan</span>
                     <h1 class="h3 fw-bold mt-1 mb-2">Rincian Kelulusan Tahun {{ $tahun }}</h1>
-                    <p class="mb-0 text-white-50">Metrik kehadiran dihitung dari pertemuan Terlaksana. Ambang kehadiran: {{ $minimumPercentageDisplay }}.</p>
+                    <p class="mb-0 text-white-50">Metrik kehadiran dihitung dari pertemuan Terlaksana sebagai syarat mengikuti ujian ({{ $minimumPercentageDisplay }}). Status kelulusan mengikuti keputusan Admin terbaru.</p>
                 </div>
                 <a class="btn btn-outline-light" href="{{ route('laporan-sik') }}">&larr; Kembali ke Laporan</a>
             </div>
@@ -46,8 +46,8 @@
         <div class="card-body p-4">
             <div class="row g-3">
                 <div class="col-6 col-md-3"><div class="small text-muted">Persentase Lulus</div><div class="h4 fw-bold mb-0">{{ $ringkasan['persentase_lulus_display'] }}</div></div>
-                <div class="col-6 col-md-3"><div class="small text-muted">Memenuhi Ambang</div><div class="h4 fw-bold mb-0">{{ $ringkasan['memenuhi_ambang'] }}</div></div>
-                <div class="col-6 col-md-3"><div class="small text-muted">Belum Memenuhi Ambang</div><div class="h4 fw-bold mb-0">{{ $ringkasan['belum_memenuhi_ambang'] }}</div></div>
+                <div class="col-6 col-md-3"><div class="small text-muted">Belum Ditetapkan · Memenuhi Syarat Ujian</div><div class="h4 fw-bold mb-0">{{ $ringkasan['memenuhi_ambang'] }}</div></div>
+                <div class="col-6 col-md-3"><div class="small text-muted">Belum Ditetapkan · Belum Memenuhi Syarat Ujian</div><div class="h4 fw-bold mb-0">{{ $ringkasan['belum_memenuhi_ambang'] }}</div></div>
                 <div class="col-6 col-md-3"><div class="small text-muted">Tanpa Pertemuan Terlaksana</div><div class="h4 fw-bold mb-0">{{ $ringkasan['belum_ada_pertemuan_terlaksana'] }}</div></div>
             </div>
         </div>
@@ -55,8 +55,8 @@
 
     <div class="card border-0 shadow-sm" id="detail-evaluasi-kelulusan-tahun">
         <div class="card-body p-4">
-            <h2 class="h5 fw-bold mb-1">Detail Evaluasi Kelulusan Santri {{ $tahun }}</h2>
-            <p class="text-muted mb-3">Rincian status evaluasi, kehadiran, dan alasan evaluasi setiap santri pada tahun ini.</p>
+            <h2 class="h5 fw-bold mb-1">Detail Kelulusan Santri {{ $tahun }}</h2>
+            <p class="text-muted mb-3">Rincian status kelulusan, keputusan Admin, dan syarat ujian setiap santri pada tahun ini.</p>
 
             <div class="table-responsive">
                 <table class="table table-hover table-bordered align-middle">
@@ -74,8 +74,8 @@
                             <th>Alpha</th>
                             <th>Persentase</th>
                             <th>Status Kehadiran</th>
-                            <th>Status Evaluasi</th>
-                            <th>Alasan Evaluasi</th>
+                            <th>Status Kelulusan</th>
+                            <th>Keterangan Status</th>
                             <th>Keterangan</th>
                         </tr>
                     </thead>

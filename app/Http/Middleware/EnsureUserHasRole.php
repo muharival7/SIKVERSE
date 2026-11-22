@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Enums\UserRole;
+use App\Models\InfrastrukturSik;
 use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
@@ -29,18 +30,27 @@ class EnsureUserHasRole
             Response::HTTP_FORBIDDEN
         );
 
-        $profileStatus = match ($userRole) {
-            UserRole::Santri => $user?->santri?->status,
-            UserRole::InfrastrukturSik => $user?->infrastrukturSik?->status,
-            UserRole::KaLabMutu => $user?->kaLabMutu?->status,
-            default => null,
-        };
+        if ($userRole === UserRole::Santri && $user?->santri?->status !== 'Aktif') {
+            abort(Response::HTTP_FORBIDDEN);
+        }
 
-        $hasInactiveOrMissingProfile = $userRole === UserRole::Santri
-            ? $profileStatus !== 'Aktif'
-            : $profileStatus === 'Tidak Aktif';
+        if ($userRole === UserRole::KaLabMutu && $user?->kaLabMutu?->status === 'Tidak Aktif') {
+            abort(Response::HTTP_FORBIDDEN);
+        }
 
-        abort_if($hasInactiveOrMissingProfile, Response::HTTP_FORBIDDEN);
+        $instruktur = $userRole === UserRole::InfrastrukturSik
+            ? $user?->infrastrukturSik
+            : null;
+
+        $isReadOnlyRequest = in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'], true);
+
+        abort_if(
+            $instruktur instanceof InfrastrukturSik
+                && ! $instruktur->isActive()
+                && ! $isReadOnlyRequest,
+            Response::HTTP_FORBIDDEN,
+            EnsureInstructorReadOnlyOnWrite::MESSAGE
+        );
 
         return $next($request);
     }

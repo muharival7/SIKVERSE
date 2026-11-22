@@ -24,6 +24,11 @@ class InfrastrukturSik extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function isActive(): bool
+    {
+        return $this->status === 'Aktif';
+    }
+
     public function jadwal(): HasMany
     {
         return $this->hasMany(Jadwal::class);

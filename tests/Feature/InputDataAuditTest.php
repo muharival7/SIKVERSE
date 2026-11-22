@@ -464,11 +464,11 @@ test('footer rekap admin tidak menampilkan kalimat rekap seluruh kelompok', func
         ->get(route('rekap-kehadiran-sik.index'))
         ->assertOk()
         ->assertDontSee('Rekap seluruh kelompok dan kegiatan SIK.')
-        ->assertDontSee('Ambang kehadiran: 87,5% dari pertemuan Terlaksana.');
+        ->assertDontSee('Ambang kehadiran: 85% dari pertemuan Terlaksana.');
 
     $this->actingAs($fixture['instructorUser'])
         ->get(route('rekap-kehadiran-sik.index'))
         ->assertOk()
         ->assertDontSee('Rekap seluruh kelompok dan kegiatan SIK.')
-        ->assertSee('Ambang kehadiran: 87,5% dari pertemuan Terlaksana.');
+        ->assertSee('Ambang kehadiran: 85% dari pertemuan Terlaksana.');
 });

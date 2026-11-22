@@ -38,4 +38,9 @@ class Kegiatan extends Model
     {
         return $this->hasMany(RekapKehadiranSik::class, 'kegiatan_id');
     }
+
+    public function nilai(): HasMany
+    {
+        return $this->hasMany(Nilai::class, 'kegiatan_id');
+    }
 }

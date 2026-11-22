@@ -6,6 +6,7 @@ use App\Enums\UserRole;
 use App\Models\KelulusanSik;
 use App\Models\SertifikatSik;
 use App\Services\AttendanceRecapService;
+use App\Services\GraduationDecisionService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,7 +19,12 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SertifikatSikController extends Controller
 {
-    public function __construct(private readonly AttendanceRecapService $attendanceRecapService) {}
+    private const FROZEN_MESSAGE = 'Sertifikat yang sudah diterbitkan bersifat final dan tidak dapat diubah atau dihapus.';
+
+    public function __construct(
+        private readonly AttendanceRecapService $attendanceRecapService,
+        private readonly GraduationDecisionService $graduationDecisionService
+    ) {}
 
     public function index(): View
     {
@@ -65,82 +71,17 @@ class SertifikatSikController extends Controller
 
     public function edit(SertifikatSik $sertifikatSik): View
     {
-        $sertifikatSik->load([
-            'kelulusan.anggotaPeriodeSik.santri',
-            'kelulusan.anggotaPeriodeSik.periode',
-        ]);
-
-        $kelulusan = $this->eligibleGraduations($sertifikatSik);
-
-        if (! $kelulusan->contains('id', $sertifikatSik->kelulusan_sik_id)) {
-            $kelulusan->push($this->decorateGraduation(
-                KelulusanSik::with([
-                    'anggotaPeriodeSik.santri',
-                    'anggotaPeriodeSik.periode',
-                ])->findOrFail($sertifikatSik->kelulusan_sik_id)
-            ));
-        }
-
-        return view('sertifikat-sik.edit', [
-            'sertifikat' => $sertifikatSik,
-            'kelulusan' => $kelulusan,
-        ]);
+        $this->abortFrozenCertificate();
     }
 
     public function update(Request $request, SertifikatSik $sertifikatSik): RedirectResponse
     {
-        $validated = $this->validatedData($request, $sertifikatSik);
-        $newFilePath = null;
-
-        if ($request->hasFile('file_sertifikat')) {
-            $storedFilePath = $request->file('file_sertifikat')->store('sertifikat-sik', 'local');
-
-            if (! is_string($storedFilePath)) {
-                return back()->withInput()->withErrors([
-                    'file_sertifikat' => 'Berkas sertifikat gagal disimpan. Silakan coba unggah kembali.',
-                ]);
-            }
-
-            $newFilePath = $storedFilePath;
-        }
-        $oldFilePath = $sertifikatSik->file_sertifikat;
-
-        if ($newFilePath === null) {
-            unset($validated['file_sertifikat']);
-        }
-
-        try {
-            if ($newFilePath !== null) {
-                $validated['file_sertifikat'] = $newFilePath;
-            }
-
-            $sertifikatSik->update($validated);
-        } catch (QueryException) {
-            if ($newFilePath !== null) {
-                Storage::disk('local')->delete($newFilePath);
-            }
-
-            return back()->withInput()->withErrors([
-                'kelulusan_sik_id' => 'Sertifikat atau nomor ini sudah tercatat.',
-            ]);
-        }
-
-        if ($newFilePath !== null && $oldFilePath !== $newFilePath) {
-            Storage::disk('local')->delete($oldFilePath);
-        }
-
-        return redirect()->route('sertifikat-sik.index')
-            ->with('success', 'Sertifikat berhasil diperbarui.');
+        $this->abortFrozenCertificate();
     }
 
     public function destroy(SertifikatSik $sertifikatSik): RedirectResponse
     {
-        $filePath = $sertifikatSik->file_sertifikat;
-        $sertifikatSik->delete();
-        Storage::disk('local')->delete($filePath);
-
-        return redirect()->route('sertifikat-sik.index')
-            ->with('success', 'Sertifikat berhasil dihapus.');
+        $this->abortFrozenCertificate();
     }
 
     public function sertifikatSantri(Request $request): View
@@ -191,70 +132,63 @@ class SertifikatSikController extends Controller
     }
 
     /**
-     * Catatan kelulusan yang layak mendapat sertifikat memakai evaluasi yang
-     * sama dengan dashboard dan laporan. Catatan lama yang sudah memiliki
-     * sertifikat tetap dikembalikan saat halaman edit dibuka.
+     * Catatan kelulusan yang layak mendapat sertifikat ditentukan oleh
+     * keputusan Admin terbaru, bukan oleh persentase kehadiran.
      *
      * @return Collection<int, KelulusanSik>
      */
-    private function eligibleGraduations(?SertifikatSik $sertifikat = null): Collection
+    private function eligibleGraduations(): Collection
     {
-        return $this->attendanceRecapService->graduationEvaluations()
-            ->filter(fn (array $row): bool => $row['evaluasi']['code'] === AttendanceRecapService::GRADUATION_PASSED)
-            ->map(fn (array $row): KelulusanSik => $this->decorateGraduation($row['kelulusan']))
-            ->filter(function (KelulusanSik $kelulusan) use ($sertifikat): bool {
-                if ($sertifikat !== null && (int) $kelulusan->id === (int) $sertifikat->kelulusan_sik_id) {
-                    return true;
-                }
-
-                return $kelulusan->sertifikat === null;
-            })
+        return KelulusanSik::query()
+            ->with([
+                'anggotaPeriodeSik.santri',
+                'anggotaPeriodeSik.periode',
+                'sertifikat',
+            ])
+            ->latest()
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (KelulusanSik $kelulusan): KelulusanSik => $this->decorateGraduation($kelulusan))
+            ->filter(fn (KelulusanSik $kelulusan): bool => $this->graduationDecisionService
+                ->isLatestDecisionPassed((int) $kelulusan->id)
+                && $kelulusan->sertifikat === null)
             ->values();
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function validatedData(Request $request, ?SertifikatSik $sertifikat = null): array
+    private function validatedData(Request $request): array
     {
-        $rules = [
+        $validated = $request->validate([
             'kelulusan_sik_id' => [
                 'required',
-                Rule::exists('kelulusan_sik', 'id')->where('status', 'Lulus'),
-                Rule::unique('sertifikat_sik', 'kelulusan_sik_id')->ignore($sertifikat?->id),
+                Rule::exists('kelulusan_sik', 'id'),
+                Rule::unique('sertifikat_sik', 'kelulusan_sik_id'),
             ],
             'nomor_sertifikat' => [
                 'required',
                 'string',
                 'max:255',
-                Rule::unique('sertifikat_sik', 'nomor_sertifikat')->ignore($sertifikat?->id),
+                Rule::unique('sertifikat_sik', 'nomor_sertifikat'),
             ],
-            'file_sertifikat' => $sertifikat === null
-                ? ['required', 'file', 'mimes:pdf', 'max:10240']
-                : ['nullable', 'file', 'mimes:pdf', 'max:10240'],
+            'file_sertifikat' => ['required', 'file', 'mimes:pdf', 'max:10240'],
             'tanggal_terbit' => ['nullable', 'date'],
             'keterangan' => ['nullable', 'string'],
-        ];
+        ]);
 
-        $validated = $request->validate($rules);
-
-        if ($sertifikat === null || (int) $validated['kelulusan_sik_id'] !== (int) $sertifikat->kelulusan_sik_id) {
-            $kelulusan = KelulusanSik::query()
-                ->with('anggotaPeriodeSik')
-                ->findOrFail($validated['kelulusan_sik_id']);
-            $evaluasi = $this->attendanceRecapService->graduationEvaluation(
-                $kelulusan,
-                $kelulusan->anggotaPeriodeSik
-            );
-
-            if ($evaluasi['code'] !== AttendanceRecapService::GRADUATION_PASSED) {
-                throw ValidationException::withMessages([
-                    'kelulusan_sik_id' => 'Sertifikat hanya dapat diterbitkan untuk catatan Lulus yang memenuhi ambang kehadiran. '.$evaluasi['alasan'],
-                ]);
-            }
+        if (! $this->graduationDecisionService->isLatestDecisionPassed((int) $validated['kelulusan_sik_id'])) {
+            throw ValidationException::withMessages([
+                'kelulusan_sik_id' => 'Sertifikat hanya dapat diterbitkan setelah Admin membuat keputusan kelulusan terbaru dengan status Lulus.',
+            ]);
         }
 
         return $validated;
+    }
+
+    private function abortFrozenCertificate(): never
+    {
+        abort(403, self::FROZEN_MESSAGE);
     }
 
     private function decorateGraduation(KelulusanSik $kelulusan): KelulusanSik
