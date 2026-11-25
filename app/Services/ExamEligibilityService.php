@@ -3,17 +3,17 @@
 namespace App\Services;
 
 use App\Models\AnggotaPeriodeSik;
-use App\Models\Kegiatan;
-use App\Models\Santri;
 
 class ExamEligibilityService
 {
     public function __construct(private readonly AttendanceRecapService $attendanceRecapService) {}
 
     /**
-     * Kelayakan mengikuti ujian memakai keanggotaan pada Kegiatan SIK yang
-     * dituju bila konteks kegiatan tersedia, dengan perhitungan kehadiran
-     * yang sama dengan rekap/laporan.
+     * Kelayakan ujian dihitung berdasarkan seluruh kehadiran SIK santri dalam
+     * konteks anggota periode yang eksplisit. Perhitungan memakai metrik rekap
+     * kehadiran yang sama: hanya pertemuan Terlaksana, kegiatan reguler
+     * kelompok santri dan kegiatan bersama (kelompok_id NULL) dalam periode
+     * yang relevan; kegiatan kelompok lain tidak dihitung.
      *
      * @return array{
      *     eligible: bool,
@@ -21,29 +21,13 @@ class ExamEligibilityService
      *     alasan: string
      * }
      */
-    public function forSantri(int $santriId, ?int $kegiatanId = null): array
+    public function forAnggotaPeriode(AnggotaPeriodeSik $anggota): array
     {
-        $santri = Santri::query()->with('anggotaPeriodeTerbaru')->find($santriId);
-
-        if (! $santri instanceof Santri) {
+        if (! $this->isEligibleMembership($anggota)) {
             return [
                 'eligible' => false,
                 'metric' => null,
-                'alasan' => 'Santri tidak ditemukan.',
-            ];
-        }
-
-        $anggota = $kegiatanId === null
-            ? $santri->anggotaPeriodeTerbaru
-            : $this->anggotaUntukKegiatan($santriId, $kegiatanId);
-
-        if ($anggota === null) {
-            return [
-                'eligible' => false,
-                'metric' => null,
-                'alasan' => $kegiatanId === null
-                    ? 'Santri tidak memiliki keanggotaan periode terbaru.'
-                    : 'Santri tidak memiliki keanggotaan aktif pada kegiatan ini.',
+                'alasan' => 'Konteks keanggotaan periode santri tidak valid atau tidak aktif.',
             ];
         }
 
@@ -58,30 +42,22 @@ class ExamEligibilityService
         ];
     }
 
-    public function rejectionMessage(int $santriId, ?int $kegiatanId = null): string
+    public function rejectionMessageForAnggotaPeriode(AnggotaPeriodeSik $anggota): string
     {
         $minimum = $this->attendanceRecapService->formatPercentage(
             $this->attendanceRecapService->minimumPercentage()
         ).'%';
 
         return 'Santri belum memenuhi syarat kehadiran '.$minimum.' untuk mengikuti ujian. '
-            .$this->forSantri($santriId, $kegiatanId)['alasan'];
+            .$this->forAnggotaPeriode($anggota)['alasan'];
     }
 
-    private function anggotaUntukKegiatan(int $santriId, int $kegiatanId): ?AnggotaPeriodeSik
+    private function isEligibleMembership(AnggotaPeriodeSik $anggota): bool
     {
-        $kegiatan = Kegiatan::query()->find($kegiatanId);
-
-        if (! $kegiatan instanceof Kegiatan) {
-            return null;
-        }
-
-        return AnggotaPeriodeSik::query()
-            ->where('santri_id', $santriId)
-            ->where('periode_sik_id', $kegiatan->periode_sik_id)
-            ->where('kelompok_id', $kegiatan->kelompok_id)
-            ->where('status', 'Aktif')
-            ->orderByDesc('id')
-            ->first();
+        return $anggota->exists
+            && (int) $anggota->santri_id > 0
+            && (int) $anggota->periode_sik_id > 0
+            && (int) $anggota->kelompok_id > 0
+            && $anggota->status === 'Aktif';
     }
 }

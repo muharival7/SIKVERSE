@@ -19,6 +19,8 @@ if ($role === \App\Enums\UserRole::Admin) {
 
         ['label' => 'Data Dosen', 'route' => 'users.index', 'matches' => ['users.*'], 'icon' => 'users'],
         ['label' => 'Rekap Absensi Dosen', 'route' => 'rekap-absensi-dosen.index', 'matches' => ['rekap-absensi-dosen.*'], 'icon' => 'report'],
+        ['label' => 'Kelola Kegiatan', 'route' => 'kegiatan.index', 'matches' => ['kegiatan.*'], 'icon' => 'book'],
+        ['label' => 'Kelola Pertemuan', 'route' => 'pertemuan.index', 'matches' => ['pertemuan.*'], 'icon' => 'calendar'],
         ['label' => 'Rekap Absensi', 'route' => 'rekap-kehadiran-sik.index', 'matches' => ['rekap-kehadiran-sik.*'], 'icon' => 'report'],
         ['label' => 'Rabu Mengaji', 'route' => 'rabu-mengaji.index', 'matches' => ['rabu-mengaji.*'], 'icon' => 'attendance'],
     ];

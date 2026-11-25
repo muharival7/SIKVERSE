@@ -6,6 +6,7 @@ use App\Enums\UserRole;
 use App\Models\AbsensiSik;
 use App\Models\AnggotaPeriodeSik;
 use App\Models\InfrastrukturSik;
+use App\Models\Kegiatan;
 use App\Models\PeriodeSik;
 use App\Models\Pertemuan;
 use App\Models\RekapKehadiranSik;
@@ -20,6 +21,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -86,21 +88,45 @@ class AbsensiSikController extends Controller
 
         $pertemuanQuery = Pertemuan::with(['kegiatan.periode', 'kegiatan.kelompok', 'kelompokHost'])
             ->where('status', '!=', 'Dibatalkan')
-            ->where(function ($query) use ($scopeActiveGroup): void {
-                $query->whereHas('kelompokHost', $scopeActiveGroup)
-                    ->orWhereHas('kegiatan.kelompok', $scopeActiveGroup);
+            ->where(function ($query) use ($scopeActiveGroup, $isAdmin, $instruktur): void {
+                $query->where(function ($regular) use ($scopeActiveGroup): void {
+                    $regular->whereHas('kelompokHost', $scopeActiveGroup)
+                        ->orWhereHas('kegiatan.kelompok', $scopeActiveGroup);
+                })->orWhere(function ($shared) use ($isAdmin, $instruktur): void {
+                    $shared->whereHas(
+                        'kegiatan',
+                        fn ($kegiatanQuery) => $this->attendanceAuthorizationService->scopeSharedActivity($kegiatanQuery)
+                    );
+
+                    if (! $isAdmin) {
+                        $shared->where('instruktur_pengganti_id', $instruktur?->id);
+                    }
+                });
             })
             ->orderByDesc('tanggal');
 
         if ($selectedPeriodeId !== null) {
-            $pertemuanQuery->where(function ($query) use ($selectedPeriodeId): void {
-                $query->whereHas(
-                    'kelompokHost',
-                    fn ($groupQuery) => $groupQuery->where('periode_sik_id', $selectedPeriodeId)
-                )->orWhereHas(
-                    'kegiatan.kelompok',
-                    fn ($groupQuery) => $groupQuery->where('periode_sik_id', $selectedPeriodeId)
-                );
+            $pertemuanQuery->where(function ($query) use ($selectedPeriodeId, $isAdmin, $instruktur): void {
+                $query->where(function ($regular) use ($selectedPeriodeId): void {
+                    $regular->whereHas(
+                        'kelompokHost',
+                        fn ($groupQuery) => $groupQuery->where('periode_sik_id', $selectedPeriodeId)
+                    )->orWhereHas(
+                        'kegiatan.kelompok',
+                        fn ($groupQuery) => $groupQuery->where('periode_sik_id', $selectedPeriodeId)
+                    );
+                })->orWhere(function ($shared) use ($selectedPeriodeId, $isAdmin, $instruktur): void {
+                    $shared->whereHas(
+                        'kegiatan',
+                        fn ($kegiatanQuery) => $this->attendanceAuthorizationService
+                            ->scopeSharedActivity($kegiatanQuery)
+                            ->where('periode_sik_id', $selectedPeriodeId)
+                    );
+
+                    if (! $isAdmin) {
+                        $shared->where('instruktur_pengganti_id', $instruktur?->id);
+                    }
+                });
             });
         }
 
@@ -114,6 +140,8 @@ class AbsensiSikController extends Controller
         }
 
         $search = trim((string) $request->query('q', ''));
+        $foundSantri = collect();
+
         if ($search !== '') {
             $searchSantri = function ($query) use ($search): void {
                 $query->where('nama', 'like', '%'.$search.'%')
@@ -122,6 +150,24 @@ class AbsensiSikController extends Controller
 
             $absensiQuery->whereHas('anggotaPeriode.santri', $searchSantri);
             $anggotaQuery->whereHas('santri', $searchSantri);
+
+            $foundSantriQuery = AnggotaPeriodeSik::query()
+                ->with(['santri:id,nomor_induk,nama', 'kelompok:id,nama_kelompok,periode_sik_id', 'periode:id,nama_periode'])
+                ->where('status', 'Aktif')
+                ->whereHas('kelompok', $scopeActiveGroup)
+                ->whereHas('santri', $searchSantri)
+                ->whereDoesntHave('absensi')
+                ->orderBy('id');
+
+            if ($selectedPeriodeId !== null) {
+                $foundSantriQuery->where('periode_sik_id', $selectedPeriodeId);
+            }
+
+            if ($selectedGroupIds !== []) {
+                $foundSantriQuery->whereIn('kelompok_id', $selectedGroupIds);
+            }
+
+            $foundSantri = $foundSantriQuery->limit(25)->get();
         }
 
         if ($selectedGroupIds !== []) {
@@ -135,6 +181,10 @@ class AbsensiSikController extends Controller
                     ->orWhereHas(
                         'kegiatan',
                         fn ($kegiatanQuery) => $kegiatanQuery->whereIn('kelompok_id', $selectedGroupIds)
+                    )
+                    ->orWhereHas(
+                        'kegiatan',
+                        fn ($kegiatanQuery) => $this->attendanceAuthorizationService->scopeSharedActivity($kegiatanQuery)
                     );
             });
         }
@@ -152,6 +202,7 @@ class AbsensiSikController extends Controller
             'periodes' => $periodes,
             'selectedPeriodeId' => $selectedPeriodeId,
             'search' => $search,
+            'foundSantri' => $foundSantri,
             'selectedGroupIds' => $selectedGroupIds,
             'completablePertemuanIds' => $completablePertemuanIds,
             'isAdmin' => $isAdmin,
@@ -204,11 +255,12 @@ class AbsensiSikController extends Controller
         $anggota = AnggotaPeriodeSik::with('kelompok')->findOrFail($validated['anggota_periode_sik_id']);
         $pertemuan = Pertemuan::with(['kegiatan.kelompok', 'kelompokHost'])->findOrFail($validated['pertemuan_id']);
         $instruktur = $this->currentInstructor($request);
+        $this->ensureSharedPertemuanVisibleToInstructor($pertemuan, $instruktur);
         $this->attendanceAuthorizationService->authorize($anggota, $pertemuan, $instruktur);
 
         try {
             DB::transaction(function () use ($validated, $anggota, $pertemuan, $instruktur): void {
-                $absensi = AbsensiSik::create([
+                AbsensiSik::create([
                     ...$validated,
                     'metode_absensi' => 'Manual',
                     'dicatat_oleh' => $instruktur?->id,
@@ -216,9 +268,23 @@ class AbsensiSikController extends Controller
 
                 $this->syncRekap($anggota, $pertemuan);
             });
-        } catch (QueryException) {
+        } catch (QueryException $exception) {
+            if ($this->isDuplicateAbsensiConstraintViolation($exception)) {
+                return back()->withInput()->withErrors([
+                    'pertemuan_id' => 'Absensi untuk santri dan pertemuan ini sudah tercatat.',
+                ]);
+            }
+
+            Log::warning('Gagal menyimpan absensi SIK manual.', [
+                'anggota_periode_sik_id' => $validated['anggota_periode_sik_id'] ?? null,
+                'pertemuan_id' => $validated['pertemuan_id'] ?? null,
+                'sql_state' => $exception->getCode(),
+                'driver_code' => $exception->errorInfo[1] ?? null,
+                'constraint' => $this->extractQueryExceptionConstraint($exception),
+            ]);
+
             return back()->withInput()->withErrors([
-                'pertemuan_id' => 'Absensi untuk santri dan pertemuan ini sudah tercatat.',
+                'pertemuan_id' => 'Absensi gagal disimpan karena terjadi kendala sistem. Silakan coba lagi atau hubungi administrator.',
             ]);
         }
 
@@ -238,6 +304,7 @@ class AbsensiSikController extends Controller
 
         $absensiSik->load(['anggotaPeriode.kelompok', 'pertemuan.kegiatan.kelompok', 'pertemuan.kelompokHost']);
         $instruktur = $this->currentInstructor($request);
+        $this->ensureSharedPertemuanVisibleToInstructor($absensiSik->pertemuan, $instruktur);
         $this->attendanceAuthorizationService->authorize($absensiSik->anggotaPeriode, $absensiSik->pertemuan, $instruktur);
 
         $buktiMenunggu = $absensiSik->buktiKetidakhadiran()
@@ -300,6 +367,7 @@ class AbsensiSikController extends Controller
     {
         $pertemuan->load(['kegiatan.kelompok', 'kelompokHost']);
         $instruktur = $this->currentInstructor($request);
+        $this->ensureSharedPertemuanVisibleToInstructor($pertemuan, $instruktur);
         $this->attendanceAuthorizationService->authorizePertemuanAccess($pertemuan, $instruktur);
 
         if ($pertemuan->status === 'Terlaksana') {
@@ -332,8 +400,10 @@ class AbsensiSikController extends Controller
     /**
      * Ubah tanggal pertemuan tanpa menyentuh catatan absensi. Absensi tetap
      * terhubung lewat pertemuan_id, sehingga status, identitas santri, dan
-     * kegiatan/kelompok tidak berubah. Izin ini terbuka untuk semua instruktur
-     * aktif; Tandai Selesai tetap dibatasi terpisah.
+     * kegiatan/kelompok tidak berubah. Untuk pertemuan reguler, semua
+     * instruktur aktif boleh mengubah tanggal; Tandai Selesai tetap dibatasi
+     * terpisah. Untuk pertemuan shared, hanya Admin atau instruktur pengganti
+     * yang ditetapkan yang boleh mengubah tanggal.
      */
     public function ubahTanggalPertemuan(Request $request, Pertemuan $pertemuan): RedirectResponse
     {
@@ -349,6 +419,7 @@ class AbsensiSikController extends Controller
 
         $pertemuan->load(['kegiatan.periode', 'kegiatan.kelompok.periode', 'kelompokHost.periode']);
         $instruktur = $this->currentInstructor($request);
+        $this->ensureSharedPertemuanVisibleToInstructor($pertemuan, $instruktur);
         $this->attendanceAuthorizationService->authorizePertemuanDateChange(
             $pertemuan,
             $instruktur,
@@ -456,11 +527,74 @@ class AbsensiSikController extends Controller
         return $instruktur;
     }
 
+    /**
+     * Guard visibilitas shared untuk jalur Absensi SIK. Admin dilewati.
+     * Instruktur hanya boleh mengakses pertemuan shared yang ditugaskan
+     * sebagai instruktur_pengganti_id. Kegiatan reguler tetap divalidasi
+     * oleh authorize()/authorizePertemuan* sebagai sumber keputusan akhir.
+     */
+    private function ensureSharedPertemuanVisibleToInstructor(
+        Pertemuan $pertemuan,
+        ?InfrastrukturSik $instruktur
+    ): void {
+        if (! $instruktur instanceof InfrastrukturSik) {
+            return;
+        }
+
+        $kegiatan = $pertemuan->kegiatan;
+
+        if (! $kegiatan instanceof Kegiatan || ! $this->attendanceAuthorizationService->isSharedActivity($kegiatan)) {
+            return;
+        }
+
+        $this->attendanceAuthorizationService->assertSharedActivityShape($kegiatan, $pertemuan);
+        $this->attendanceAuthorizationService->assertSharedPertemuanAssignedToInstructor($pertemuan, $instruktur);
+    }
+
     private function syncRekap(AnggotaPeriodeSik $anggota, Pertemuan $pertemuan): void
     {
         $this->attendanceRecapService->sync(
             (int) $anggota->id,
             (int) $pertemuan->kegiatan_id
         );
+    }
+
+    private function isDuplicateAbsensiConstraintViolation(QueryException $exception): bool
+    {
+        if ((string) $exception->getCode() !== '23000') {
+            return false;
+        }
+
+        $driverCode = (int) ($exception->errorInfo[1] ?? 0);
+        if ($driverCode !== 1062) {
+            return false;
+        }
+
+        $constraint = $this->extractQueryExceptionConstraint($exception);
+        if ($constraint === null) {
+            return false;
+        }
+
+        return $constraint === 'absensi_anggota_pertemuan_unique'
+            || str_ends_with($constraint, '.absensi_anggota_pertemuan_unique');
+    }
+
+    private function extractQueryExceptionConstraint(QueryException $exception): ?string
+    {
+        $message = $exception->getMessage();
+
+        if (preg_match("/for key '([^']+)'/", $message, $matches) === 1) {
+            return $matches[1];
+        }
+
+        if (preg_match('/for key "([^"]+)"/', $message, $matches) === 1) {
+            return $matches[1];
+        }
+
+        if (preg_match('/UNIQUE constraint failed: ([^\s]+)/', $message, $matches) === 1) {
+            return $matches[1];
+        }
+
+        return null;
     }
 }

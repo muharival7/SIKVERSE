@@ -22,6 +22,15 @@ class AttendanceAuthorizationService
         return $this->isSharedActivityName((string) $kegiatan->nama_kegiatan);
     }
 
+    public function isSharedPertemuan(Pertemuan $pertemuan): bool
+    {
+        $kegiatan = $pertemuan->relationLoaded('kegiatan')
+            ? $pertemuan->kegiatan
+            : $pertemuan->kegiatan()->first();
+
+        return $kegiatan instanceof Kegiatan && $this->isSharedActivity($kegiatan);
+    }
+
     /**
      * @param  Builder<Kegiatan>  $query
      * @return Builder<Kegiatan>
@@ -29,6 +38,15 @@ class AttendanceAuthorizationService
     public function scopeSharedActivity(Builder $query): Builder
     {
         return $query->whereRaw('LOWER(nama_kegiatan) LIKE ?', ['%mengaji%']);
+    }
+
+    /**
+     * @param  Builder<Pertemuan>  $query
+     * @return Builder<Pertemuan>
+     */
+    public function scopeSharedPertemuan(Builder $query): Builder
+    {
+        return $query->whereHas('kegiatan', fn (Builder $kegiatanQuery): Builder => $this->scopeSharedActivity($kegiatanQuery));
     }
 
     public function isActiveInstructor(InfrastrukturSik $instruktur): bool
@@ -59,6 +77,7 @@ class AttendanceAuthorizationService
 
         if ($this->isSharedActivity($kegiatan)) {
             $this->assertSharedActivityShape($kegiatan, $pertemuan);
+            $this->assertSharedPertemuanAssignedToInstructor($pertemuan, $instruktur);
             $this->assertSharedMembership($anggota, $kegiatan);
 
             return;
@@ -156,16 +175,7 @@ class AttendanceAuthorizationService
 
         if ($this->isSharedActivity($kegiatan)) {
             $this->assertSharedActivityShape($kegiatan, $pertemuan);
-
-            if (! $instruktur instanceof InfrastrukturSik) {
-                return;
-            }
-
-            abort_unless(
-                (int) $pertemuan->instruktur_pengganti_id === (int) $instruktur->id,
-                403,
-                'Anda tidak berwenang menandai selesai kegiatan bersama.'
-            );
+            $this->assertSharedPertemuanAssignedToInstructor($pertemuan, $instruktur);
 
             return;
         }
@@ -196,9 +206,11 @@ class AttendanceAuthorizationService
 
     /**
      * Otorisasi perubahan tanggal pertemuan. Izin ini sengaja dipisahkan dari
-     * authorizePertemuanAccess(): semua instruktur aktif boleh mengubah tanggal
-     * pertemuan pada kelompok aktif mana pun, sedangkan Tandai Selesai tetap
-     * menjadi hak penanggung jawab atau instruktur pengganti.
+     * authorizePertemuanAccess(): untuk pertemuan reguler, semua instruktur
+     * aktif boleh mengubah tanggal pertemuan pada kelompok aktif mana pun,
+     * sedangkan Tandai Selesai tetap menjadi hak penanggung jawab atau
+     * instruktur pengganti. Untuk pertemuan shared, hanya Admin atau
+     * instruktur pengganti yang ditetapkan yang boleh mengubah tanggal.
      *
      * Admin dilewati melalui $instruktur null. Parameter kelompok/periode
      * opsional dipakai untuk menolak manipulasi nilai tersembunyi dari form.
@@ -227,16 +239,7 @@ class AttendanceAuthorizationService
 
         if ($this->isSharedActivity($kegiatan)) {
             $this->assertSharedActivityShape($kegiatan, $pertemuan);
-
-            if (! $instruktur instanceof InfrastrukturSik) {
-                return;
-            }
-
-            abort_unless(
-                (int) $pertemuan->instruktur_pengganti_id === (int) $instruktur->id,
-                403,
-                'Anda tidak berwenang mengubah tanggal pertemuan ini.'
-            );
+            $this->assertSharedPertemuanAssignedToInstructor($pertemuan, $instruktur);
 
             return;
         }
@@ -291,7 +294,34 @@ class AttendanceAuthorizationService
         }
     }
 
-    private function assertSharedActivityShape(Kegiatan $kegiatan, Pertemuan $pertemuan): void
+    public function isAssignedSharedPertemuan(Pertemuan $pertemuan, InfrastrukturSik $instruktur): bool
+    {
+        return $pertemuan->instruktur_pengganti_id !== null
+            && (int) $pertemuan->instruktur_pengganti_id === (int) $instruktur->id;
+    }
+
+    /**
+     * Admin dilewati melalui $instruktur null. Untuk pertemuan shared,
+     * instruktur hanya berwenang jika ditetapkan sebagai instruktur_pengganti_id.
+     */
+    public function assertSharedPertemuanAssignedToInstructor(
+        Pertemuan $pertemuan,
+        ?InfrastrukturSik $instruktur
+    ): void {
+        if (! $instruktur instanceof InfrastrukturSik) {
+            return;
+        }
+
+        abort_unless(
+            $this->isAssignedSharedPertemuan($pertemuan, $instruktur),
+            403,
+            'Anda tidak berwenang mengakses pertemuan bersama ini.'
+        );
+    }
+
+
+
+    public function assertSharedActivityShape(Kegiatan $kegiatan, Pertemuan $pertemuan): void
     {
         if ($kegiatan->kelompok_id !== null || $pertemuan->kelompok_host_id !== null) {
             throw ValidationException::withMessages([

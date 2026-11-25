@@ -13,6 +13,7 @@ class Nilai extends Model
         'santri_id',
         'mata_pelajaran_id',
         'kegiatan_id',
+        'nama_kegiatan',
         'jenis_nilai',
         'infrastruktur_sik_id',
         'semester',

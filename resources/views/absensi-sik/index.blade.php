@@ -49,7 +49,50 @@
         </div>
     </form>
 
-    <details class="attendance-manual card border-0 shadow-sm mb-4" @if ($errors->has('pertemuan_id') || $errors->has('anggota_periode_sik_id')) open @endif>
+    @if ($search !== '')
+        <section class="card border-0 shadow-sm mb-4" aria-labelledby="found-santri-title">
+            <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div>
+                    <h2 class="h5 fw-bold mb-0" id="found-santri-title">Santri Ditemukan</h2>
+                    <p class="text-muted small mb-0">Hasil pencarian untuk "{{ $search }}". Status "Belum ada catatan" bersifat informasi dan tidak otomatis mencatat kehadiran.</p>
+                </div>
+                <span class="badge text-bg-light border">{{ number_format($foundSantri->count()) }} santri</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Nomor Induk</th>
+                            <th>Nama Santri</th>
+                            <th>Kelompok</th>
+                            <th>Periode</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($foundSantri as $member)
+                            <tr>
+                                <td class="text-nowrap">{{ $member->santri?->nomor_induk ?? '—' }}</td>
+                                <td><strong>{{ $member->santri?->nama ?? '—' }}</strong></td>
+                                <td>{{ $member->kelompok?->nama_kelompok ?? '—' }}</td>
+                                <td>{{ $member->periode?->nama_periode ?? '—' }}</td>
+                                <td><span class="badge text-bg-warning">Belum ada catatan</span></td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">Santri tidak ditemukan atau tidak sesuai filter yang dipilih.</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-footer bg-white">
+                <p class="small text-muted mb-0">Bagian ini menampilkan santri yang cocok dengan pencarian tetapi belum memiliki catatan absensi. Untuk mencatat kehadiran, gunakan form "Catat absensi manual" dan simpan secara manual.</p>
+            </div>
+        </section>
+    @endif
+
+    <details class="attendance-manual card border-0 shadow-sm mb-4" @if ($errors->hasAny(['pertemuan_id', 'anggota_periode_sik_id', 'status', 'waktu_masuk', 'waktu_pulang', 'keterangan'])) open @endif>
         <summary><span>Catat absensi manual</span><span class="attendance-summary-note">Pilih pertemuan dan santri untuk membuat catatan baru</span></summary>
         <div class="card-body">
             <form action="{{ route('absensi-sik.store') }}" method="POST">
@@ -59,10 +102,10 @@
                         <p class="form-text mt-1">Tanggal kehadiran otomatis mengikuti tanggal Pertemuan yang dipilih. Untuk mengubah tanggal pertemuan yang sudah memiliki catatan absensi, gunakan menu “Ubah Tanggal Pertemuan” pada daftar kehadiran.</p>
                     </div>
                     <div class="col-lg-4"><label class="form-label" for="anggota_periode_sik_id">Santri</label><select class="form-select @error('anggota_periode_sik_id') is-invalid @enderror" id="anggota_periode_sik_id" name="anggota_periode_sik_id" required><option value="">Pilih santri</option>@foreach ($anggota as $member)<option value="{{ $member->id }}" @selected((string) old('anggota_periode_sik_id') === (string) $member->id)>{{ $member->santri?->nama }} · {{ $member->santri?->nomor_induk }} / {{ $member->kelompok?->nama_kelompok }}</option>@endforeach</select>@error('anggota_periode_sik_id')<div class="invalid-feedback">{{ $message }}</div>@enderror</div>
-                    <div class="col-lg-4"><label class="form-label" for="new_status">Status</label><select class="form-select" id="new_status" name="status" required>@foreach (['Hadir', 'Izin', 'Sakit', 'Alpha', 'Tidak Lengkap'] as $status)<option value="{{ $status }}" @selected(old('status', 'Hadir') === $status)>{{ $status }}</option>@endforeach</select></div>
-                    <div class="col-md-3"><label class="form-label" for="waktu_masuk">Waktu masuk</label><input class="form-control" type="time" id="waktu_masuk" name="waktu_masuk" value="{{ old('waktu_masuk') }}"></div>
-                    <div class="col-md-3"><label class="form-label" for="waktu_pulang">Waktu pulang</label><input class="form-control" type="time" id="waktu_pulang" name="waktu_pulang" value="{{ old('waktu_pulang') }}"></div>
-                    <div class="col-md-6"><label class="form-label" for="keterangan">Keterangan</label><input class="form-control" id="keterangan" name="keterangan" value="{{ old('keterangan') }}"></div>
+                    <div class="col-lg-4"><label class="form-label" for="new_status">Status</label><select class="form-select @error('status') is-invalid @enderror" id="new_status" name="status" required>@foreach (['Hadir', 'Izin', 'Sakit', 'Alpha', 'Tidak Lengkap'] as $status)<option value="{{ $status }}" @selected(old('status', 'Hadir') === $status)>{{ $status }}</option>@endforeach</select>@error('status')<div class="invalid-feedback">{{ $message }}</div>@enderror</div>
+                    <div class="col-md-3"><label class="form-label" for="waktu_masuk">Waktu masuk</label><input class="form-control @error('waktu_masuk') is-invalid @enderror" type="time" id="waktu_masuk" name="waktu_masuk" value="{{ old('waktu_masuk') }}">@error('waktu_masuk')<div class="invalid-feedback">{{ $message }}</div>@enderror</div>
+                    <div class="col-md-3"><label class="form-label" for="waktu_pulang">Waktu pulang</label><input class="form-control @error('waktu_pulang') is-invalid @enderror" type="time" id="waktu_pulang" name="waktu_pulang" value="{{ old('waktu_pulang') }}">@error('waktu_pulang')<div class="invalid-feedback">{{ $message }}</div>@enderror</div>
+                    <div class="col-md-6"><label class="form-label" for="keterangan">Keterangan</label><input class="form-control @error('keterangan') is-invalid @enderror" id="keterangan" name="keterangan" value="{{ old('keterangan') }}">@error('keterangan')<div class="invalid-feedback">{{ $message }}</div>@enderror</div>
                 </div>
                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mt-3"><p class="form-text mb-0">Pencatatan fingerprint belum terhubung; catatan ini disimpan sebagai absensi manual.</p><button class="btn btn-primary" type="submit">Simpan Absensi</button></div>
             </form>

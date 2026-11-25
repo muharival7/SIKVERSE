@@ -246,9 +246,16 @@
     row-gap: 1rem;
 }
 
-.nilai-field--mapel {
-    grid-column: span 8;
+.nilai-field {
     min-width: 0;
+}
+
+.nilai-field--konteks {
+    grid-column: span 12;
+}
+
+.nilai-field--mapel {
+    grid-column: span 12;
 }
 
 .nilai-field--jenis {
@@ -256,20 +263,36 @@
 }
 
 .nilai-field--kegiatan {
-    grid-column: span 6;
+    grid-column: span 8;
 }
 
 .nilai-field--semester,
 .nilai-field--tahun {
-    grid-column: span 3;
+    grid-column: span 4;
 }
 
 .nilai-field--nilai {
-    grid-column: span 8;
+    grid-column: span 4;
 }
 
 .nilai-field--keterangan {
     grid-column: 1 / -1;
+}
+
+.nilai-field .form-control,
+.nilai-field .form-select {
+    width: 100%;
+    max-width: 100%;
+}
+
+.nilai-field .form-label {
+    margin-bottom: .35rem;
+    font-weight: 600;
+}
+
+.nilai-field .form-text,
+.nilai-field .invalid-feedback {
+    overflow-wrap: anywhere;
 }
 
 .nilai-field--keterangan textarea {
@@ -359,6 +382,7 @@
         grid-column: 1 / -1;
     }
 
+    .nilai-field--konteks,
     .nilai-field--jenis,
     .nilai-field--kegiatan,
     .nilai-field--semester,
@@ -407,15 +431,28 @@
     }
 
     .nilai-form-grid {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1fr;
+    }
+
+    .nilai-field--konteks,
+    .nilai-field--mapel,
+    .nilai-field--jenis,
+    .nilai-field--kegiatan,
+    .nilai-field--semester,
+    .nilai-field--tahun,
+    .nilai-field--nilai,
+    .nilai-field--keterangan {
+        grid-column: 1 / -1;
     }
 
     .nilai-form-footer {
-        justify-content: flex-start;
+        justify-content: stretch;
     }
 
-    .nilai-form-footer .btn {
-        flex: 1 1 0;
+    .nilai-form-footer .btn,
+    .nilai-add-details > summary {
+        width: 100%;
+        justify-content: center;
     }
 }
 
